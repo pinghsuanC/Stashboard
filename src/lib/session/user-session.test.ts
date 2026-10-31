@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { auth } from "@/auth";
 import { DAY_MS } from "@/lib/constants/time";
+import { hasAiCredits } from "@/services/ai/openai";
 import { fakeAdapter, paidPeriod, resetFakeBilling } from "@/test/fake-billing";
 import { db, resetDb } from "@/test/fake-prisma";
 
@@ -30,6 +31,7 @@ vi.mock("@/services/rate-limit", () => ({
   checkRateLimit: async () => ({ success: true, remaining: 1, reset: Date.now() }),
 }));
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
+vi.mock("@/services/ai/openai", () => ({ hasAiCredits: vi.fn() }));
 
 const signedInAs = (userId: string | null) =>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- auth() is overloaded; the session shape is all that matters
@@ -51,6 +53,7 @@ beforeEach(() => {
   resetDb();
   resetFakeBilling();
   vi.mocked(refresh).mockClear();
+  vi.mocked(hasAiCredits).mockReset().mockResolvedValue(true);
   db.users.push(
     {
       id: "ada",
@@ -252,8 +255,30 @@ describe("user session: item counts, pinned items and collections (S3)", () => {
     const session = await getUserSession();
 
     expect(Object.keys(session).sort()).toEqual(
-      ["billing", "collections", "itemCounts", "itemTypes", "pinnedItems", "searchItems", "user"],
+      ["aiAvailable", "billing", "collections", "itemCounts", "itemTypes", "pinnedItems", "searchItems", "user"],
     );
+  });
+
+  it("AI1: a Pro user has AI while the account has credits", async () => {
+    signedInAs("ada");
+    vi.mocked(hasAiCredits).mockResolvedValue(true);
+
+    expect((await getUserSession()).aiAvailable).toBe(true);
+  });
+
+  it("AI2: a Pro user loses AI when the credits run out", async () => {
+    signedInAs("ada");
+    vi.mocked(hasAiCredits).mockResolvedValue(false);
+
+    expect((await getUserSession()).aiAvailable).toBe(false);
+  });
+
+  it("AI3: a Free user has no AI, and costs no credit check", async () => {
+    signedInAs("bob");
+    vi.mocked(hasAiCredits).mockResolvedValue(true);
+
+    expect((await getUserSession()).aiAvailable).toBe(false);
+    expect(hasAiCredits).not.toHaveBeenCalled();
   });
 
   it("GS1: holds the user's items for the search palette, newest first, never another user's", async () => {

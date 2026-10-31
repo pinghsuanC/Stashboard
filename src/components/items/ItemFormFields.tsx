@@ -3,6 +3,7 @@ import type { ReactNode, Ref } from "react";
 import { CodeEditor } from "@/components/items/CodeEditor";
 import { CollectionPicker } from "@/components/items/CollectionPicker";
 import { MarkdownEditor } from "@/components/items/MarkdownEditor";
+import { SuggestTags } from "@/components/items/SuggestTags";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -180,7 +181,16 @@ export const ItemFormFields = ({
         hint="Separate tags with commas"
       >
         {(describedBy) => (
-          <Input {...bind("tags")} placeholder="react, hooks" aria-describedby={describedBy} />
+          <>
+            <Input {...bind("tags")} placeholder="react, hooks" aria-describedby={describedBy} />
+            <SuggestTags
+              title={draft.title}
+              // The dialog's draft keeps content typed before a change of type.
+              content={fields.includes("content") ? draft.content : ""}
+              tags={draft.tags}
+              onTagsChange={(tags) => onChange("tags", tags)}
+            />
+          </>
         )}
       </Field>
 

@@ -4,8 +4,10 @@ import { PRICING } from "@/lib/constants/pricing";
 export const ITEM_LIMIT_REACHED = `Free accounts hold up to ${PRICING.free.itemLimit} items. Upgrade to Pro for unlimited items.`;
 export const COLLECTION_LIMIT_REACHED = `Free accounts hold up to ${PRICING.free.collectionLimit} collections. Upgrade to Pro for unlimited collections.`;
 export const PRO_TYPE_REQUIRED = "File and image uploads are a Pro feature. Upgrade to Pro to upload.";
+export const AI_PRO_REQUIRED = "AI suggestions are a Pro feature. Upgrade to Pro to use them.";
 /** The upgrade dialog's line when it opens without a refusal (the billing page's Upgrade). */
-export const UPGRADE_PITCH = "Subscribe to Pro for unlimited items and collections, plus file and image uploads.";
+export const UPGRADE_PITCH =
+  "Subscribe to Pro for unlimited items and collections, file and image uploads, and AI tag suggestions.";
 
 /** Checkout and the billing portal. */
 export const BILLING_UNAVAILABLE = "Billing is unavailable right now. Please try again later.";

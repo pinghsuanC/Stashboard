@@ -5,7 +5,7 @@ import { PRO_TYPE_NAMES } from "@/lib/constants/item-types";
 import { COLLECTION_LIMIT_REACHED, ITEM_LIMIT_REACHED } from "@/lib/constants/messages/billing";
 import { PRICING } from "@/lib/constants/pricing";
 
-import { canCreateCollection, canCreateItem, canUseType, liveSince, subscriptionState } from "./plan-rules";
+import { canCreateCollection, canCreateItem, canUseAi, canUseType, liveSince, subscriptionState } from "./plan-rules";
 
 const now = new Date("2026-05-10T12:00:00Z");
 
@@ -73,6 +73,11 @@ describe("Free plan limits (Billing 2: R1–R4)", () => {
     for (const typeName of PRO_TYPE_NAMES) expect(canUseType("FREE", typeName)).toBe(false);
     expect(canUseType("FREE", "snippet")).toBe(true);
     expect(canUseType("FREE", "link")).toBe(true);
+  });
+
+  it("AI features are Pro only", () => {
+    expect(canUseAi("FREE")).toBe(false);
+    expect(canUseAi("PRO")).toBe(true);
   });
 
   it("R4: Pro has none of these limits", () => {

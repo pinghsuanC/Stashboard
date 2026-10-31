@@ -13,6 +13,18 @@ export interface AiCall {
  */
 export type AiFailureKind = "not-configured" | "busy" | "timeout" | "unavailable" | "no-answer";
 
+/**
+ * The item as it is in the form, unsaved: what a generated description reads.
+ * Fields a type doesn't have are left blank.
+ */
+export interface DescriptionInput {
+  title: string;
+  content: string;
+  language: string;
+  url: string;
+  fileName: string;
+}
+
 /** The item as it is in the form, unsaved: what tag suggestions read. */
 export interface AutoTagInput {
   title: string;

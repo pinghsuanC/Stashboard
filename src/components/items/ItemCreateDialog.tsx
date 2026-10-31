@@ -241,6 +241,7 @@ export const ItemCreateDialog = () => {
               fieldErrors={fieldErrors}
               contentRows={6}
               titleRef={titleRef}
+              fileName={file?.name}
             />
           </div>
 

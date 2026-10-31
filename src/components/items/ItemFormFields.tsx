@@ -3,6 +3,7 @@ import type { ReactNode, Ref } from "react";
 import { CodeEditor } from "@/components/items/CodeEditor";
 import { CollectionPicker } from "@/components/items/CollectionPicker";
 import { MarkdownEditor } from "@/components/items/MarkdownEditor";
+import { SuggestDescription } from "@/components/items/SuggestDescription";
 import { SuggestTags } from "@/components/items/SuggestTags";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +34,8 @@ interface ItemFormFieldsProps {
   contentRows?: number;
   /** For a parent that focuses the title, e.g. when the dialog opens. */
   titleRef?: Ref<HTMLInputElement>;
+  /** A file or image item's file, picked or stored: all AI can read of it. */
+  fileName?: string;
 }
 
 interface FieldProps {
@@ -40,18 +43,23 @@ interface FieldProps {
   label: string;
   error?: string;
   hint?: string;
+  /** Shown at the end of the label's row. */
+  action?: ReactNode;
   children: (describedBy: string | undefined) => ReactNode;
 }
 
 /** Label, control and error, wired together for screen readers. */
-const Field = ({ id, label, error, hint, children }: FieldProps) => {
+const Field = ({ id, label, error, hint, action, children }: FieldProps) => {
   const errorId = `${id}-error`;
   const hintId = `${id}-hint`;
   const describedBy = error ? errorId : hint ? hintId : undefined;
 
   return (
     <div className="grid gap-2">
-      <Label htmlFor={id}>{label}</Label>
+      <div className="flex items-center justify-between gap-2">
+        <Label htmlFor={id}>{label}</Label>
+        {action}
+      </div>
       {children(describedBy)}
       {error ? (
         <p id={errorId} className="text-destructive text-sm">
@@ -80,6 +88,7 @@ export const ItemFormFields = ({
   fieldErrors,
   contentRows = 10,
   titleRef,
+  fileName = "",
 }: ItemFormFieldsProps) => {
   const bind = (key: ItemDraftTextField) => ({
     id: `${idPrefix}-${key}`,
@@ -88,6 +97,9 @@ export const ItemFormFields = ({
       onChange(key, event.target.value),
     "aria-invalid": fieldErrors[key] ? true : undefined,
   });
+
+  // The dialog's draft keeps fields typed before a change of type.
+  const shownField = (key: EditableItemField) => (fields.includes(key) ? draft[key] : "");
 
   return (
     <>
@@ -103,7 +115,21 @@ export const ItemFormFields = ({
         )}
       </Field>
 
-      <Field id={`${idPrefix}-description`} label="Description" error={fieldErrors.description}>
+      <Field
+        id={`${idPrefix}-description`}
+        label="Description"
+        error={fieldErrors.description}
+        action={
+          <SuggestDescription
+            title={draft.title}
+            content={shownField("content")}
+            language={shownField("language")}
+            url={shownField("url")}
+            fileName={fileName}
+            onDescriptionChange={(description) => onChange("description", description)}
+          />
+        }
+      >
         {(describedBy) => (
           <Textarea
             {...bind("description")}
@@ -185,8 +211,7 @@ export const ItemFormFields = ({
             <Input {...bind("tags")} placeholder="react, hooks" aria-describedby={describedBy} />
             <SuggestTags
               title={draft.title}
-              // The dialog's draft keeps content typed before a change of type.
-              content={fields.includes("content") ? draft.content : ""}
+              content={shownField("content")}
               tags={draft.tags}
               onTagsChange={(tags) => onChange("tags", tags)}
             />

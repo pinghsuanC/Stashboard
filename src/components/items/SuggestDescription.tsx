@@ -55,13 +55,12 @@ export const SuggestDescription = ({ onDescriptionChange, ...item }: SuggestDesc
     <Button
       type="button"
       variant="ghost"
-      size="icon-xs"
-      aria-label="Generate description"
-      title="Generate description"
+      size="xs"
       onClick={write}
       disabled={writing || !hasText}
     >
       {writing ? <LoaderCircle className="animate-spin" /> : <Sparkles />}
+      Describe for me
     </Button>
   );
 };

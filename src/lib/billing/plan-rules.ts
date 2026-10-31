@@ -25,3 +25,6 @@ export const canCreateCollection = (plan: Plan, collectionCount: number): boolea
 
 /** Whether the plan may create items of this type: file and image are Pro. */
 export const canUseType = (plan: Plan, typeName: string): boolean => plan === "PRO" || !PRO_TYPE_NAMES.has(typeName);
+
+/** Whether the plan may use the AI features. */
+export const canUseAi = (plan: Plan): boolean => plan === "PRO";

@@ -51,6 +51,9 @@ export const FLAG_TOAST_ID = "flag-toast";
 /** Toast id for a refused pick in the upload box: a second bad file replaces the first message. */
 export const FILE_PICK_TOAST_ID = "file-pick-toast";
 
+/** Toast id for Suggest Tags: a repeat click updates one toast. */
+export const AI_SUGGEST_TOAST_ID = "ai-suggest-toast";
+
 /** The code and Markdown editors grow with their content up to this height, then scroll. */
 export const EDITOR_MAX_HEIGHT_PX = 400;
 

@@ -34,6 +34,11 @@ export interface UserSession {
    * session; navigation reuses it. Never carries vendor ids.
    */
   billing: BillingStatus;
+  /**
+   * Whether this user can use AI features right now: on Pro, and the app's
+   * OpenAI account has credits. Follows `hasAiCredits()`.
+   */
+  aiAvailable: boolean;
   itemTypes: ItemTypeDefinition[];
   /** Numbers only: total, favorites, per type. */
   itemCounts: ItemCounts;

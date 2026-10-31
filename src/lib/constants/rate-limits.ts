@@ -39,6 +39,11 @@ export const RATE_LIMITS = {
    * spend the app's Stripe rate limit.
    */
   billingCheck: { limit: 30, window: "1 h", perIp: false },
+  /**
+   * AI features, keyed by the session user alone: OpenAI bills every call.
+   * Fails open like every policy, so OpenAI's project budget is the backstop.
+   */
+  ai: { limit: 20, window: "1 h", perIp: false },
 } as const satisfies Record<string, { limit: number; window: Duration; perIp?: false }>;
 
 export type RateLimitPolicy = keyof typeof RATE_LIMITS;

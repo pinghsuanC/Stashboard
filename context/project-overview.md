@@ -693,8 +693,9 @@ src/
 │   ├── prisma.ts        # Prisma client singleton
 │   ├── auth.ts          # NextAuth config
 │   ├── stripe.ts        # Stripe client
-│   ├── openai.ts        # OpenAI client
 │   └── r2.ts            # Cloudflare R2 utilities
+├── services/
+│   └── ai/openai.ts     # OpenAI client
 ├── hooks/               # Custom React hooks
 └── types/               # Shared TypeScript types
 prisma/

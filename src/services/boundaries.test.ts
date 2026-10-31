@@ -103,9 +103,15 @@ describe("service boundaries", () => {
     expect(importing("@/services/billing/entitlement").length).toBeGreaterThan(0);
   });
 
+  it("B13 (AI): only the AI service talks to OpenAI", () => {
+    expect(importing("openai")).toEqual(["services/ai/openai.ts"]);
+    expect(importingPrefix("openai/")).toEqual([]);
+  });
+
   it("B7: lib/ is grouped by area; only shadcn's utils stays at its root", () => {
     const root = readdirSync(join(SRC, "lib"), { withFileTypes: true });
     expect(root.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort()).toEqual([
+      "ai",
       "auth",
       "billing",
       "collections",

@@ -100,6 +100,7 @@ export const ItemEditForm = ({ item, onCancel, onSaved, onGone, children }: Item
           draft={draft}
           onChange={(key, value) => setDraft((current) => ({ ...current, [key]: value }))}
           fieldErrors={fieldErrors}
+          fileName={item.fileName ?? undefined}
         />
 
         {children}

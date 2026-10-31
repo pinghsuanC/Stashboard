@@ -1,12 +1,15 @@
 "use server";
 
 import { headers } from "next/headers";
+import type { z } from "zod";
 
 import { aiFailureMessage } from "@/lib/ai/ai-failure";
-import { autoTagInputSchema } from "@/lib/ai/ai-schemas";
+import { autoTagInputSchema, descriptionInputSchema } from "@/lib/ai/ai-schemas";
 import { autoTagCall, parseSuggestedTags } from "@/lib/ai/auto-tags";
+import { descriptionCall, parseDescription } from "@/lib/ai/descriptions";
 import { rateLimitMessage } from "@/lib/auth/rate-limit-messages";
 import { canUseAi } from "@/lib/billing/plan-rules";
+import { AI_NO_DESCRIPTION, AI_NO_SUGGESTION } from "@/lib/constants/messages/ai";
 import { AI_PRO_REQUIRED } from "@/lib/constants/messages/billing";
 import { FIELDS_INVALID } from "@/lib/constants/messages/common";
 import { fieldErrorsOf } from "@/lib/helpers/form-errors";
@@ -18,20 +21,23 @@ import type { ActionResult } from "@/types/forms";
 const PRO_REQUIRED = { success: false, error: { message: AI_PRO_REQUIRED, code: "plan-limit" } } as const;
 
 /**
- * Suggests tags for the item in the form, saved or not. Saves nothing: the
- * user accepts each tag into the form, and the form's save writes it.
- *
- * The order is `createItem`'s: a Free user's click and an invalid draft use up
- * no tries. The model, instructions and caps come from constants, never the
- * caller.
+ * One AI feature's checks around its call. The order is `createItem`'s: a Free
+ * user's click and an invalid draft use up no tries. The `ai` rate limit is
+ * shared by every feature, so looping one can't dodge another's. `suggest`
+ * builds its call from constants, never the caller's model or instructions.
  */
-export const generateAutoTags = async (input: unknown): Promise<ActionResult<string[]>> => {
+const withAiChecks = async <Input, Result>(
+  input: unknown,
+  schema: z.ZodType<Input>,
+  noAnswer: string,
+  suggest: (draft: Input, userId: string) => Promise<Result>,
+): Promise<ActionResult<Result>> => {
   // First and outside the try: a signed-out caller is redirected to sign in
   // whatever they send.
   const { id: userId, plan } = await requireCurrentUser();
   if (!canUseAi(plan)) return PRO_REQUIRED;
 
-  const parsed = autoTagInputSchema.safeParse(input);
+  const parsed = schema.safeParse(input);
   if (!parsed.success) {
     return {
       success: false,
@@ -43,9 +49,26 @@ export const generateAutoTags = async (input: unknown): Promise<ActionResult<str
   if (!limit.success) return { success: false, error: { message: rateLimitMessage(limit.reset) } };
 
   try {
-    const reply = await generateJsonText(autoTagCall(parsed.data), userId);
-    return { success: true, data: parseSuggestedTags(reply, parsed.data.tags) };
+    return { success: true, data: await suggest(parsed.data, userId) };
   } catch (error) {
-    return { success: false, error: { message: aiFailureMessage(error) } };
+    return { success: false, error: { message: aiFailureMessage(error, noAnswer) } };
   }
 };
+
+/**
+ * Suggests tags for the item in the form, saved or not. Saves nothing: the
+ * user accepts each tag into the form, and the form's save writes it.
+ */
+export const generateAutoTags = async (input: unknown): Promise<ActionResult<string[]>> =>
+  withAiChecks(input, autoTagInputSchema, AI_NO_SUGGESTION, async (item, userId) =>
+    parseSuggestedTags(await generateJsonText(autoTagCall(item), userId), item.tags),
+  );
+
+/**
+ * Writes a description for the item in the form, saved or not, from whatever
+ * its type has. Saves nothing: the text goes in the form, and its save writes it.
+ */
+export const generateDescription = async (input: unknown): Promise<ActionResult<string>> =>
+  withAiChecks(input, descriptionInputSchema, AI_NO_DESCRIPTION, async (item, userId) =>
+    parseDescription(await generateJsonText(descriptionCall(item), userId)),
+  );

@@ -1,4 +1,5 @@
 import { AiError } from "@/lib/ai/ai-errors";
+import { parseJsonReply } from "@/lib/ai/json-reply";
 import {
   AI_CONTENT_MAX_CHARS,
   AI_EFFORTS,
@@ -33,12 +34,7 @@ export const autoTagCall = ({ title, content }: AutoTagInput): AiCall => ({
 
 /** The model may answer `{"tags": [...]}` or a bare `[...]`. */
 const tagListIn = (text: string): unknown[] => {
-  let reply: unknown;
-  try {
-    reply = JSON.parse(text);
-  } catch {
-    throw new AiError("no-answer", "The model's reply was not JSON");
-  }
+  const reply = parseJsonReply(text);
   const tags = Array.isArray(reply) ? reply : (reply as { tags?: unknown } | null)?.tags;
   if (!Array.isArray(tags)) throw new AiError("no-answer", "The model's reply held no tag list");
   return tags;

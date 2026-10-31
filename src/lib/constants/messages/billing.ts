@@ -7,7 +7,7 @@ export const PRO_TYPE_REQUIRED = "File and image uploads are a Pro feature. Upgr
 export const AI_PRO_REQUIRED = "AI suggestions are a Pro feature. Upgrade to Pro to use them.";
 /** The upgrade dialog's line when it opens without a refusal (the billing page's Upgrade). */
 export const UPGRADE_PITCH =
-  "Subscribe to Pro for unlimited items and collections, file and image uploads, and AI tag suggestions.";
+  "Subscribe to Pro for unlimited items and collections, file and image uploads, and AI tags and descriptions.";
 
 /** Checkout and the billing portal. */
 export const BILLING_UNAVAILABLE = "Billing is unavailable right now. Please try again later.";

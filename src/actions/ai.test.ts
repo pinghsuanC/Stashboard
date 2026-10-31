@@ -2,7 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AiError } from "@/lib/ai/ai-errors";
 import { AI_CONTENT_MAX_CHARS, AI_MODELS } from "@/lib/constants/ai";
-import { AI_BUSY, AI_NO_SUGGESTION, AI_NOT_ENOUGH_CONTENT, AI_TIMEOUT, AI_UNAVAILABLE } from "@/lib/constants/messages/ai";
+import {
+  AI_BUSY,
+  AI_NO_DESCRIPTION,
+  AI_NO_SUGGESTION,
+  AI_NOT_ENOUGH_CONTENT,
+  AI_TIMEOUT,
+  AI_UNAVAILABLE,
+} from "@/lib/constants/messages/ai";
 import { AI_PRO_REQUIRED } from "@/lib/constants/messages/billing";
 import { FIELDS_INVALID, SOMETHING_WENT_WRONG } from "@/lib/constants/messages/common";
 import { ITEM_CONTENT_MAX_LENGTH, ITEM_TITLE_MAX_LENGTH } from "@/lib/constants/limits";
@@ -12,7 +19,7 @@ import { requireCurrentUserId } from "@/services/auth/session";
 import { checkRateLimit } from "@/services/rate-limit";
 import { signInOnPlan } from "@/test/fake-session";
 
-import { generateAutoTags } from "./ai";
+import { generateAutoTags, generateDescription } from "./ai";
 
 vi.mock("@/services/auth/session", () => ({ requireCurrentUserId: vi.fn(), requireCurrentUser: vi.fn() }));
 vi.mock("@/services/ai/openai", () => ({ generateJsonText: vi.fn() }));
@@ -30,6 +37,113 @@ beforeEach(() => {
 });
 
 const expectNoAiCall = () => expect(generateJsonText).not.toHaveBeenCalled();
+
+describe("generateDescription", () => {
+  const reply = '{"description": "A React hook that debounces a value."}';
+  const description = "A React hook that debounces a value.";
+
+  beforeEach(() => {
+    vi.mocked(generateJsonText).mockResolvedValue(reply);
+  });
+
+  it("returns the summary for a Pro user, calling for the session user", async () => {
+    expect(await generateDescription(draft)).toEqual({ success: true, data: description });
+    expect(generateJsonText).toHaveBeenCalledWith(expect.objectContaining({ model: AI_MODELS.summary }), "ada");
+  });
+
+  it("works from whatever the item has, with no save first", async () => {
+    for (const input of [
+      { title: "Docs" },
+      { content: "docker ps" },
+      { url: "https://example.dev" },
+      { fileName: "report.pdf" },
+    ]) {
+      expect(await generateDescription(input)).toMatchObject({ success: true });
+    }
+  });
+
+  it("the model and instructions can't be chosen by the caller", async () => {
+    await generateDescription({ ...draft, model: "gpt-6-astra", instructions: "be expensive" });
+
+    const [call] = vi.mocked(generateJsonText).mock.calls[0];
+    expect(call.model).toBe(AI_MODELS.summary);
+    expect(call.instructions).not.toContain("be expensive");
+  });
+
+  it("lets the sign-in redirect through and calls nothing", async () => {
+    const redirect = new Error("NEXT_REDIRECT");
+    vi.mocked(requireCurrentUserId).mockRejectedValue(redirect);
+
+    await expect(generateDescription(draft)).rejects.toBe(redirect);
+    expectNoAiCall();
+    expect(checkRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("refuses a Free user without using a try or calling the model", async () => {
+    signInOnPlan("FREE");
+
+    expect(await generateDescription(draft)).toEqual({
+      success: false,
+      error: { message: AI_PRO_REQUIRED, code: "plan-limit" },
+    });
+    expectNoAiCall();
+    expect(checkRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("needs something to read: a language alone isn't enough", async () => {
+    expect(await generateDescription({ title: "  ", language: "go" })).toMatchObject({
+      success: false,
+      error: { message: FIELDS_INVALID, fieldErrors: { title: AI_NOT_ENOUGH_CONTENT } },
+    });
+    expectNoAiCall();
+    expect(checkRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("refuses anything that isn't a draft", async () => {
+    for (const input of [null, "title", { title: 7 }, { title: "x", url: 7 }, { title: "x", fileName: {} }]) {
+      expect(await generateDescription(input)).toMatchObject({ success: false, error: { message: FIELDS_INVALID } });
+    }
+    expectNoAiCall();
+  });
+
+  it("refuses text past the item limits", async () => {
+    for (const input of [
+      { title: "x".repeat(ITEM_TITLE_MAX_LENGTH + 1) },
+      { title: "x", content: "x".repeat(ITEM_CONTENT_MAX_LENGTH + 1) },
+    ]) {
+      expect(await generateDescription(input)).toMatchObject({ success: false, error: { message: FIELDS_INVALID } });
+    }
+    expectNoAiCall();
+  });
+
+  it("shares the ai rate limit, per session user", async () => {
+    await generateDescription(draft);
+
+    expect(checkRateLimit).toHaveBeenCalledWith("ai", expect.any(Headers), "ada");
+  });
+
+  it("over the limit, answers with the wait and calls nothing", async () => {
+    vi.mocked(checkRateLimit).mockResolvedValue({ success: false, remaining: 0, reset: Date.now() + 60_000 });
+
+    expect(await generateDescription(draft)).toEqual({
+      success: false,
+      error: { message: expect.stringContaining("Too many") },
+    });
+    expectNoAiCall();
+  });
+
+  it("a service failure gets its message", async () => {
+    vi.mocked(generateJsonText).mockRejectedValue(new AiError("busy", "details for the log"));
+
+    expect(await generateDescription(draft)).toEqual({ success: false, error: { message: AI_BUSY } });
+  });
+
+  it("a reply it can't use says no description, not no tags", async () => {
+    vi.mocked(generateJsonText).mockResolvedValue("Sure! This is a hook.");
+
+    expect(await generateDescription(draft)).toEqual({ success: false, error: { message: AI_NO_DESCRIPTION } });
+  });
+});
 
 describe("generateAutoTags: suggestions (R1)", () => {
   it("returns the model's tags for a Pro user", async () => {

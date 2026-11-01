@@ -129,7 +129,16 @@ export interface ItemDraft {
 }
 
 /** The draft fields typed into a text input. */
-export type ItemDraftTextField = Exclude<keyof ItemDraft, "collectionIds">;
+export type ItemDraftTextField = Exclude<keyof ItemDraft, "collectionIds" | "language">;
+
+/** A row in the language picker. */
+export interface CodeLanguageOption {
+  /** What the item stores. */
+  value: string;
+  label: string;
+  /** Other names the search finds it by. */
+  keywords: readonly string[];
+}
 
 /** What the item drawer does next depends on which of these comes back. */
 export type ItemDetailResult =

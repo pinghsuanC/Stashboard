@@ -2,6 +2,7 @@ import type { ReactNode, Ref } from "react";
 
 import { CodeEditor } from "@/components/items/CodeEditor";
 import { CollectionPicker } from "@/components/items/CollectionPicker";
+import { LanguagePicker } from "@/components/items/LanguagePicker";
 import { MarkdownEditor } from "@/components/items/MarkdownEditor";
 import { SuggestDescription } from "@/components/items/SuggestDescription";
 import { SuggestTags } from "@/components/items/SuggestTags";
@@ -140,6 +141,20 @@ export const ItemFormFields = ({
         )}
       </Field>
 
+      {fields.includes("language") && (
+        <Field id={`${idPrefix}-language`} label="Language" error={fieldErrors.language}>
+          {(describedBy) => (
+            <LanguagePicker
+              id={`${idPrefix}-language`}
+              value={draft.language}
+              onChange={(language) => onChange("language", language)}
+              ariaDescribedBy={describedBy}
+              ariaInvalid={Boolean(fieldErrors.language)}
+            />
+          )}
+        </Field>
+      )}
+
       {fields.includes("content") && (
         <Field id={`${idPrefix}-content`} label="Content" error={fieldErrors.content}>
           {(describedBy) =>
@@ -175,14 +190,6 @@ export const ItemFormFields = ({
               />
             )
           }
-        </Field>
-      )}
-
-      {fields.includes("language") && (
-        <Field id={`${idPrefix}-language`} label="Language" error={fieldErrors.language}>
-          {(describedBy) => (
-            <Input {...bind("language")} placeholder="typescript" aria-describedby={describedBy} />
-          )}
         </Field>
       )}
 

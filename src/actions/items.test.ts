@@ -64,6 +64,14 @@ describe("updateItem action: success (A1)", () => {
     expect(itemRow("note")).toMatchObject({ title: "Retro", content: "new", tags: ["team"] });
   });
 
+  it("a content-only save, as Use it sends, leaves the tags as they are", async () => {
+    await updateItem("note", { title: "Standup", tags: ["team"] });
+
+    await updateItem("note", { title: "Standup", description: "", content: "optimized" });
+
+    expect(itemRow("note")).toMatchObject({ content: "optimized", tags: ["team"] });
+  });
+
   it("refreshes the page and session so lists and pinned items show the edit", async () => {
     await updateItem("note", { title: "Retro" });
 

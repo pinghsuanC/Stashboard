@@ -100,17 +100,20 @@ export const hasAiCredits = (): Promise<boolean> => {
 const respond = async (call: AiCall, userId: string, json: boolean) => {
   const openai = getClient();
   try {
-    const response = await openai.responses.create({
-      model: call.model,
-      reasoning: { effort: call.effort },
-      instructions: call.instructions,
-      input: call.input,
-      max_output_tokens: call.maxOutputTokens,
-      // Nothing kept on OpenAI's side for later retrieval.
-      store: false,
-      safety_identifier: safetyIdentifier(userId),
-      ...(json && { text: { format: { type: "json_object" } } }),
-    });
+    const response = await openai.responses.create(
+      {
+        model: call.model,
+        reasoning: { effort: call.effort },
+        instructions: call.instructions,
+        input: call.input,
+        max_output_tokens: call.maxOutputTokens,
+        // Nothing kept on OpenAI's side for later retrieval.
+        store: false,
+        safety_identifier: safetyIdentifier(userId),
+        ...(json && { text: { format: { type: "json_object" } } }),
+      },
+      { timeout: call.timeoutMs ?? AI_TIMEOUT_MS, maxRetries: call.maxRetries ?? AI_MAX_RETRIES },
+    );
     if (!response.output_text) throw new AiError("no-answer", `Empty reply (${response.status})`);
     return response;
   } catch (error) {

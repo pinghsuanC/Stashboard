@@ -5,6 +5,10 @@ export interface AiCall {
   instructions: string;
   input: string;
   maxOutputTokens: number;
+  /** Per attempt. Left out, the shared `AI_TIMEOUT_MS` applies. */
+  timeoutMs?: number;
+  /** Left out, the shared `AI_MAX_RETRIES` applies. */
+  maxRetries?: number;
 }
 
 /**
@@ -23,6 +27,11 @@ export interface AiTextReply {
 export interface ExplainInput {
   content: string;
   language: string;
+}
+
+/** The saved prompt a drawer shows: what an optimization reads. */
+export interface OptimizeInput {
+  content: string;
 }
 
 /**

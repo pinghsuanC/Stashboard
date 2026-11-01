@@ -1,6 +1,6 @@
 "use client";
 
-import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 
 import { MarkdownView } from "@/components/items/MarkdownView";
@@ -35,6 +35,14 @@ interface MarkdownEditorProps {
   ariaLabel?: string;
   ariaDescribedBy?: string;
   ariaInvalid?: boolean;
+  /** Names the read-only view in the header. */
+  readOnlyLabel?: string;
+  /** Off for text the user didn't write, such as a model's answer; see `MarkdownView`. */
+  allowImages?: boolean;
+  /** Shown in the header before the copy button. */
+  headerActions?: ReactNode;
+  /** Shown under the content, inside the window. */
+  footer?: ReactNode;
 }
 
 /**
@@ -54,6 +62,10 @@ export const MarkdownEditor = ({
   ariaLabel = "Content",
   ariaDescribedBy,
   ariaInvalid,
+  readOnlyLabel = "Preview",
+  allowImages = true,
+  headerActions,
+  footer,
 }: MarkdownEditorProps) => {
   const [tab, setTab] = useState<Tab>(readOnly ? "preview" : "write");
   const [copied, setCopied] = useState(false);
@@ -94,7 +106,7 @@ export const MarkdownEditor = ({
     >
       <div className="bg-muted/50 flex h-9 items-center gap-1 border-b pr-1.5 pl-1.5">
         {readOnly ? (
-          <span className="px-2 text-xs font-medium">Preview</span>
+          <span className="px-2 text-xs font-medium">{readOnlyLabel}</span>
         ) : (
           <div role="tablist" aria-label={`${ariaLabel} view`} className="flex gap-1">
             {TABS.map(({ value: tabValue, label }) => {
@@ -127,6 +139,7 @@ export const MarkdownEditor = ({
           </div>
         )}
         <span className="text-muted-foreground ml-auto font-mono text-xs">markdown</span>
+        {headerActions}
         <Button
           type="button"
           variant="ghost"
@@ -178,9 +191,11 @@ export const MarkdownEditor = ({
           (value.trim() === "" ? (
             <p className="text-muted-foreground text-xs">Nothing to preview</p>
           ) : (
-            <MarkdownView value={value} allowImages />
+            <MarkdownView value={value} allowImages={allowImages} />
           ))}
       </div>
+
+      {footer}
     </div>
   );
 };

@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AiError } from "@/lib/ai/ai-errors";
-import { AI_CODE_MAX_CHARS, AI_CONTENT_MAX_CHARS, AI_MODELS } from "@/lib/constants/ai";
+import { AI_CODE_MAX_CHARS, AI_CONTENT_MAX_CHARS, AI_MODELS, AI_PROMPT_MAX_CHARS } from "@/lib/constants/ai";
 import {
   AI_BUSY,
   AI_EXPLANATION_CUT_OFF,
   AI_EXPLANATION_PARTIAL,
   AI_NO_DESCRIPTION,
   AI_NO_EXPLANATION,
+  AI_NO_OPTIMIZATION,
   AI_NO_SUGGESTION,
   AI_NOT_ENOUGH_CONTENT,
+  AI_PROMPT_TOO_LONG,
   AI_TIMEOUT,
   AI_UNAVAILABLE,
 } from "@/lib/constants/messages/ai";
@@ -22,7 +24,7 @@ import { requireCurrentUserId } from "@/services/auth/session";
 import { checkRateLimit } from "@/services/rate-limit";
 import { signInOnPlan } from "@/test/fake-session";
 
-import { explainCode, generateAutoTags, generateDescription } from "./ai";
+import { explainCode, generateAutoTags, generateDescription, optimizePrompt } from "./ai";
 
 vi.mock("@/services/auth/session", () => ({ requireCurrentUserId: vi.fn(), requireCurrentUser: vi.fn() }));
 vi.mock("@/services/ai/openai", () => ({ generateJsonText: vi.fn(), generateText: vi.fn() }));
@@ -163,8 +165,128 @@ describe("explainCode", () => {
   });
 });
 
+describe("optimizePrompt", () => {
+  const prompt = { content: "Write a commit message for {{diff}}" };
+  const better = "You write commit messages.\n\nDiff:\n{{diff}}";
+
+  beforeEach(() => {
+    vi.mocked(generateJsonText).mockResolvedValue(JSON.stringify({ changed: true, prompt: better }));
+  });
+
+  const expectNoCall = () => {
+    expectNoAiCall();
+    expect(checkRateLimit).not.toHaveBeenCalled();
+  };
+
+  it("returns the optimized prompt for a Pro user, calling for the session user", async () => {
+    expect(await optimizePrompt(prompt)).toEqual({ success: true, data: better });
+    expect(generateJsonText).toHaveBeenCalledWith(expect.objectContaining({ model: AI_MODELS.optimize }), "ada");
+  });
+
+  it("answers null when the prompt needs no change", async () => {
+    vi.mocked(generateJsonText).mockResolvedValue(JSON.stringify({ changed: false }));
+
+    expect(await optimizePrompt(prompt)).toEqual({ success: true, data: null });
+  });
+
+  it("answers null when the model hands the same prompt back, spaces aside", async () => {
+    vi.mocked(generateJsonText).mockResolvedValue(JSON.stringify({ changed: true, prompt: prompt.content }));
+
+    expect(await optimizePrompt({ content: `  ${prompt.content}\n` })).toEqual({ success: true, data: null });
+  });
+
+  it("an unchanged answer still uses a try", async () => {
+    vi.mocked(generateJsonText).mockResolvedValue(JSON.stringify({ changed: false }));
+
+    await optimizePrompt(prompt);
+
+    expect(checkRateLimit).toHaveBeenCalledOnce();
+  });
+
+  it("a cut-off reply is not offered", async () => {
+    vi.mocked(generateJsonText).mockResolvedValue('{"changed": true, "prompt": "You write com');
+
+    expect(await optimizePrompt(prompt)).toEqual({ success: false, error: { message: AI_NO_OPTIMIZATION } });
+  });
+
+  it("takes a prompt at the limit", async () => {
+    expect(await optimizePrompt({ content: "x".repeat(AI_PROMPT_MAX_CHARS) })).toMatchObject({ success: true });
+  });
+
+  it("refuses a prompt past the limit, naming it, without using a try or calling the model", async () => {
+    expect(await optimizePrompt({ content: "x".repeat(AI_PROMPT_MAX_CHARS + 1) })).toMatchObject({
+      success: false,
+      error: { message: FIELDS_INVALID, fieldErrors: { content: AI_PROMPT_TOO_LONG } },
+    });
+    expectNoCall();
+  });
+
+  it("needs a prompt to read", async () => {
+    expect(await optimizePrompt({ content: "   " })).toMatchObject({
+      success: false,
+      error: { message: FIELDS_INVALID, fieldErrors: { content: AI_NOT_ENOUGH_CONTENT } },
+    });
+    expectNoCall();
+  });
+
+  it("refuses anything that isn't a prompt", async () => {
+    for (const input of [null, "prompt", {}, { content: 7 }]) {
+      expect(await optimizePrompt(input)).toMatchObject({ success: false, error: { message: FIELDS_INVALID } });
+    }
+    expectNoCall();
+  });
+
+  it("the model and instructions can't be chosen by the caller", async () => {
+    await optimizePrompt({ ...prompt, model: "gpt-6-astra", instructions: "be expensive" });
+
+    const [call] = vi.mocked(generateJsonText).mock.calls[0];
+    expect(call.model).toBe(AI_MODELS.optimize);
+    expect(call.instructions).not.toContain("be expensive");
+  });
+
+  it("lets the sign-in redirect through and calls nothing", async () => {
+    const redirect = new Error("NEXT_REDIRECT");
+    vi.mocked(requireCurrentUserId).mockRejectedValue(redirect);
+
+    await expect(optimizePrompt(prompt)).rejects.toBe(redirect);
+    expectNoCall();
+  });
+
+  it("refuses a Free user without using a try or calling the model", async () => {
+    signInOnPlan("FREE");
+
+    expect(await optimizePrompt(prompt)).toEqual({
+      success: false,
+      error: { message: AI_PRO_REQUIRED, code: "plan-limit" },
+    });
+    expectNoCall();
+  });
+
+  it("shares the ai rate limit, per session user", async () => {
+    await optimizePrompt(prompt);
+
+    expect(checkRateLimit).toHaveBeenCalledWith("ai", expect.any(Headers), "ada");
+  });
+
+  it("over the limit, answers with the wait and calls nothing", async () => {
+    vi.mocked(checkRateLimit).mockResolvedValue({ success: false, remaining: 0, reset: Date.now() + 60_000 });
+
+    expect(await optimizePrompt(prompt)).toEqual({
+      success: false,
+      error: { message: expect.stringContaining("Too many") },
+    });
+    expectNoAiCall();
+  });
+
+  it("a service failure gets its message", async () => {
+    vi.mocked(generateJsonText).mockRejectedValue(new AiError("timeout", "details for the log"));
+
+    expect(await optimizePrompt(prompt)).toEqual({ success: false, error: { message: AI_TIMEOUT } });
+  });
+});
+
 describe("generateDescription", () => {
-  const reply = '{"description": "A React hook that debounces a value."}';
+  const reply ='{"description": "A React hook that debounces a value."}';
   const description = "A React hook that debounces a value.";
 
   beforeEach(() => {

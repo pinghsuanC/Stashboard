@@ -4,13 +4,24 @@ import { headers } from "next/headers";
 import type { z } from "zod";
 
 import { aiFailureMessage } from "@/lib/ai/ai-failure";
-import { autoTagInputSchema, descriptionInputSchema, explainInputSchema } from "@/lib/ai/ai-schemas";
+import {
+  autoTagInputSchema,
+  descriptionInputSchema,
+  explainInputSchema,
+  optimizeInputSchema,
+} from "@/lib/ai/ai-schemas";
 import { autoTagCall, parseSuggestedTags } from "@/lib/ai/auto-tags";
 import { descriptionCall, parseDescription } from "@/lib/ai/descriptions";
 import { explainCall, explanationFrom } from "@/lib/ai/explanations";
+import { optimizeCall, parseOptimizedPrompt } from "@/lib/ai/prompt-optimization";
 import { rateLimitMessage } from "@/lib/auth/rate-limit-messages";
 import { canUseAi } from "@/lib/billing/plan-rules";
-import { AI_NO_DESCRIPTION, AI_NO_EXPLANATION, AI_NO_SUGGESTION } from "@/lib/constants/messages/ai";
+import {
+  AI_NO_DESCRIPTION,
+  AI_NO_EXPLANATION,
+  AI_NO_OPTIMIZATION,
+  AI_NO_SUGGESTION,
+} from "@/lib/constants/messages/ai";
 import { AI_PRO_REQUIRED } from "@/lib/constants/messages/billing";
 import { FIELDS_INVALID } from "@/lib/constants/messages/common";
 import { fieldErrorsOf } from "@/lib/helpers/form-errors";
@@ -63,6 +74,16 @@ const withAiChecks = async <Input, Result>(
 export const explainCode = async (input: unknown): Promise<ActionResult<string>> =>
   withAiChecks(input, explainInputSchema, AI_NO_EXPLANATION, async (code, userId) =>
     explanationFrom(await generateText(explainCall(code), userId), code.content),
+  );
+
+/**
+ * Refines the saved prompt a drawer is showing: the new text, or `null` when
+ * it needs no change. Saves nothing: the user chooses, and Use it saves through
+ * `updateItem`. Every click uses a try, including one that changes nothing.
+ */
+export const optimizePrompt = async (input: unknown): Promise<ActionResult<string | null>> =>
+  withAiChecks(input, optimizeInputSchema, AI_NO_OPTIMIZATION, async (prompt, userId) =>
+    parseOptimizedPrompt(await generateJsonText(optimizeCall(prompt), userId), prompt.content),
   );
 
 /**

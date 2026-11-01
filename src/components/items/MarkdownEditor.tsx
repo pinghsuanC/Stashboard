@@ -1,11 +1,9 @@
 "use client";
 
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
-import remarkBreaks from "remark-breaks";
-import remarkGfm from "remark-gfm";
 import { Check, Copy } from "lucide-react";
 
+import { MarkdownView } from "@/components/items/MarkdownView";
 import { Button } from "@/components/ui/button";
 import { ITEM_CONTENT_MAX_LENGTH } from "@/lib/constants/limits";
 import { EDITOR_MAX_HEIGHT_PX } from "@/lib/constants/ui";
@@ -24,25 +22,6 @@ const TABS: readonly { value: Tab; label: string }[] = [
   { value: "write", label: "Write" },
   { value: "preview", label: "Preview" },
 ];
-
-// `remark-breaks`: a newline shows as one, as typed. Prompts are templates
-// ("Diff:\n{{diff}}"), and standard Markdown would join those lines.
-const REMARK_PLUGINS = [remarkGfm, remarkBreaks];
-
-// Links in user content open in a new tab and carry no referrer. Raw HTML in
-// the Markdown is never rendered (no `rehype-raw`), and react-markdown's
-// default `urlTransform` empties `javascript:` and other unsafe URLs; such a
-// link stays text, since `href=""` would open this page again.
-const COMPONENTS: Components = {
-  a: ({ href, title, children }) =>
-    href ? (
-      <a href={href} title={title} target="_blank" rel="noopener noreferrer">
-        {children}
-      </a>
-    ) : (
-      <span title={title}>{children}</span>
-    ),
-};
 
 interface MarkdownEditorProps {
   value: string;
@@ -64,9 +43,7 @@ interface MarkdownEditorProps {
  * alone. Both grow with their content up to `EDITOR_MAX_HEIGHT_PX`, then
  * scroll inside. For note and prompt content (`isMarkdownItemType`).
  *
- * The preview renders GitHub Flavored Markdown (`remark-gfm`) with newlines
- * kept (`remark-breaks`), styled by the
- * `.markdown-preview` rules in globals.css.
+ * The preview renders through `MarkdownView`.
  */
 export const MarkdownEditor = ({
   value,
@@ -201,11 +178,7 @@ export const MarkdownEditor = ({
           (value.trim() === "" ? (
             <p className="text-muted-foreground text-xs">Nothing to preview</p>
           ) : (
-            <div className="markdown-preview">
-              <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
-                {value}
-              </ReactMarkdown>
-            </div>
+            <MarkdownView value={value} allowImages />
           ))}
       </div>
     </div>

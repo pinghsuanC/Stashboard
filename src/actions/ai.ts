@@ -4,16 +4,17 @@ import { headers } from "next/headers";
 import type { z } from "zod";
 
 import { aiFailureMessage } from "@/lib/ai/ai-failure";
-import { autoTagInputSchema, descriptionInputSchema } from "@/lib/ai/ai-schemas";
+import { autoTagInputSchema, descriptionInputSchema, explainInputSchema } from "@/lib/ai/ai-schemas";
 import { autoTagCall, parseSuggestedTags } from "@/lib/ai/auto-tags";
 import { descriptionCall, parseDescription } from "@/lib/ai/descriptions";
+import { explainCall, explanationFrom } from "@/lib/ai/explanations";
 import { rateLimitMessage } from "@/lib/auth/rate-limit-messages";
 import { canUseAi } from "@/lib/billing/plan-rules";
-import { AI_NO_DESCRIPTION, AI_NO_SUGGESTION } from "@/lib/constants/messages/ai";
+import { AI_NO_DESCRIPTION, AI_NO_EXPLANATION, AI_NO_SUGGESTION } from "@/lib/constants/messages/ai";
 import { AI_PRO_REQUIRED } from "@/lib/constants/messages/billing";
 import { FIELDS_INVALID } from "@/lib/constants/messages/common";
 import { fieldErrorsOf } from "@/lib/helpers/form-errors";
-import { generateJsonText } from "@/services/ai/openai";
+import { generateJsonText, generateText } from "@/services/ai/openai";
 import { requireCurrentUser } from "@/services/auth/session";
 import { checkRateLimit } from "@/services/rate-limit";
 import type { ActionResult } from "@/types/forms";
@@ -54,6 +55,15 @@ const withAiChecks = async <Input, Result>(
     return { success: false, error: { message: aiFailureMessage(error, noAnswer) } };
   }
 };
+
+/**
+ * Explains the saved code a drawer is showing, as markdown. Saves nothing:
+ * every click asks again, and uses a try.
+ */
+export const explainCode = async (input: unknown): Promise<ActionResult<string>> =>
+  withAiChecks(input, explainInputSchema, AI_NO_EXPLANATION, async (code, userId) =>
+    explanationFrom(await generateText(explainCall(code), userId), code.content),
+  );
 
 /**
  * Suggests tags for the item in the form, saved or not. Saves nothing: the

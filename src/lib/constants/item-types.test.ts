@@ -8,10 +8,24 @@ import {
   isGalleryItemType,
   isListItemType,
   isMarkdownItemType,
+  isPromptItemType,
   SYSTEM_TYPE_COLORS,
 } from "./item-types";
 
 import { MOCK_ITEM_TYPES } from "../../../prisma/seed-data";
+
+describe("prompt items, which can be optimized", () => {
+  it("is prompts alone, not notes", () => {
+    expect(isPromptItemType("prompt")).toBe(true);
+    expect(isPromptItemType("note")).toBe(false);
+  });
+
+  it("matches the stored name exactly, and nothing on the prototype", () => {
+    expect(isPromptItemType("Prompt")).toBe(false);
+    expect(isPromptItemType("constructor")).toBe(false);
+    expect(isPromptItemType("size")).toBe(false);
+  });
+});
 
 describe("editable body fields per item type (E1)", () => {
   it("snippets and commands edit content and language", () => {

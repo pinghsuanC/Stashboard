@@ -1,16 +1,13 @@
 "use client";
 
 import { type KeyboardEvent, useRef, useState, useTransition } from "react";
-import { Crown, LoaderCircle, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { explainCode } from "@/actions/ai";
+import { AiHeaderButton } from "@/components/items/AiHeaderButton";
 import { CodeEditor } from "@/components/items/CodeEditor";
 import { MarkdownView } from "@/components/items/MarkdownView";
 import { useMountedRef } from "@/components/items/use-mounted-ref";
-import { useUserSession } from "@/components/session/UserSessionProvider";
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SOMETHING_WENT_WRONG } from "@/lib/constants/messages/common";
 import { AI_SUGGEST_TOAST_ID } from "@/lib/constants/ui";
 import { cn } from "@/lib/utils";
@@ -32,15 +29,10 @@ interface ExplainableCodeProps {
  * After an explanation, Code and Explain tabs switch between the two in the
  * same window. It isn't saved: each click asks again.
  *
- * Free users see a Crown saying it's a Pro feature. A Pro user sees nothing
- * when the OpenAI account is out of credits. Both come from the session, which
- * can be a load behind: `explainCode` decides, and its refusal is toasted.
- *
  * The drawer keys this by item, so an answer landing after another item opens
  * is dropped rather than shown on the wrong code.
  */
 export const ExplainableCode = ({ value, language }: ExplainableCodeProps) => {
-  const { user, aiAvailable } = useUserSession();
   const [explanation, setExplanation] = useState<string | null>(null);
   const [view, setView] = useState<View>("code");
   const [explaining, startExplaining] = useTransition();
@@ -101,33 +93,13 @@ export const ExplainableCode = ({ value, language }: ExplainableCodeProps) => {
     </div>
   );
 
-  const action = !user.isPro ? (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span
-          tabIndex={0}
-          className="text-muted-foreground focus-visible:ring-ring/50 inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs outline-none focus-visible:ring-3"
-        >
-          <Crown className="size-3.5" />
-          Explain
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>AI features require Pro subscription</TooltipContent>
-    </Tooltip>
-  ) : aiAvailable ? (
-    <Button type="button" variant="ghost" size="xs" className="shrink-0" onClick={explain} disabled={explaining}>
-      {explaining ? <LoaderCircle className="animate-spin" /> : <Sparkles />}
-      Explain
-    </Button>
-  ) : null;
-
   return (
     <CodeEditor
       value={value}
       language={language}
       readOnly
       headerTabs={tabs}
-      headerActions={action}
+      headerActions={<AiHeaderButton label="Explain" busy={explaining} onClick={explain} />}
       replacement={
         view === "explanation" && explanation !== null ? (
           <div role="tabpanel" aria-label="Explanation">

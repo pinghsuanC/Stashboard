@@ -92,7 +92,16 @@ describe("generateJsonText: the request", () => {
         max_output_tokens: 400,
         text: { format: { type: "json_object" } },
       }),
+      expect.anything(),
     );
+  });
+
+  it("uses the shared timeout and retries unless the call sets its own", async () => {
+    await generateJsonText(call, "ada");
+    await generateJsonText({ ...call, timeoutMs: 60_000, maxRetries: 0 }, "ada");
+
+    expect(create.mock.calls[0][1]).toEqual({ timeout: AI_TIMEOUT_MS, maxRetries: AI_MAX_RETRIES });
+    expect(create.mock.calls[1][1]).toEqual({ timeout: 60_000, maxRetries: 0 });
   });
 
   it("keeps nothing on OpenAI's side", async () => {

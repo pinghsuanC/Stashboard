@@ -8,6 +8,7 @@ import { ExplainableCode } from "@/components/items/ExplainableCode";
 import { ItemDeleteDialog } from "@/components/items/ItemDeleteDialog";
 import { ItemEditForm } from "@/components/items/ItemEditForm";
 import { MarkdownEditor } from "@/components/items/MarkdownEditor";
+import { OptimizablePrompt } from "@/components/items/OptimizablePrompt";
 import { FlagButton } from "@/components/shared/FlagButton";
 import { TypeIcon } from "@/components/shared/TypeIcon";
 import { ItemContentSkeleton, ItemMetaSkeleton } from "@/components/skeleton/ItemDrawerSkeleton";
@@ -21,7 +22,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { isFileItemType } from "@/lib/constants/files";
-import { isCodeItemType, isGalleryItemType, isMarkdownItemType } from "@/lib/constants/item-types";
+import {
+  isCodeItemType,
+  isGalleryItemType,
+  isMarkdownItemType,
+  isPromptItemType,
+} from "@/lib/constants/item-types";
 import { ITEM_LOAD_FAILED } from "@/lib/constants/messages/items";
 import { itemFileHref } from "@/lib/constants/routes";
 import { formatBytes, formatLongDate } from "@/lib/helpers/format";
@@ -275,6 +281,8 @@ export const ItemDrawer = ({
                 <Section title="Content">
                   {isCodeItemType(type.name) ? (
                     <ExplainableCode key={item.id} value={detail.content} language={detail.language} />
+                  ) : isPromptItemType(type.name) ? (
+                    <OptimizablePrompt key={item.id} item={detail} onSaved={onSaved} onGone={() => onGone(item.id)} />
                   ) : isMarkdownItemType(type.name) ? (
                     <MarkdownEditor value={detail.content} readOnly />
                   ) : (

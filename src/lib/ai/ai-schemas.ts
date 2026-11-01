@@ -1,9 +1,10 @@
 import { z } from "zod";
 
+import { AI_PROMPT_MAX_CHARS } from "@/lib/constants/ai";
 import { ITEM_CONTENT_MAX_LENGTH, ITEM_TITLE_MAX_LENGTH } from "@/lib/constants/limits";
-import { AI_NOT_ENOUGH_CONTENT } from "@/lib/constants/messages/ai";
+import { AI_NOT_ENOUGH_CONTENT, AI_PROMPT_TOO_LONG } from "@/lib/constants/messages/ai";
 import { ITEM_CONTENT_TOO_LONG, ITEM_TITLE_TOO_LONG } from "@/lib/constants/messages/items";
-import type { AutoTagInput, DescriptionInput, ExplainInput } from "@/types/ai";
+import type { AutoTagInput, DescriptionInput, ExplainInput, OptimizeInput } from "@/types/ai";
 
 /** An explanation needs code to read; its language is optional, as on the item. */
 export const explainInputSchema: z.ZodType<ExplainInput> = z.object({
@@ -13,6 +14,14 @@ export const explainInputSchema: z.ZodType<ExplainInput> = z.object({
     .min(1, AI_NOT_ENOUGH_CONTENT)
     .max(ITEM_CONTENT_MAX_LENGTH, ITEM_CONTENT_TOO_LONG),
   language: z.string().trim().default(""),
+});
+
+/**
+ * An optimization needs a prompt to read. Its limit is the model's, far below
+ * the item's: the answer replaces the whole prompt, so it can't read only part.
+ */
+export const optimizeInputSchema: z.ZodType<OptimizeInput> = z.object({
+  content: z.string().trim().min(1, AI_NOT_ENOUGH_CONTENT).max(AI_PROMPT_MAX_CHARS, AI_PROMPT_TOO_LONG),
 });
 
 /**

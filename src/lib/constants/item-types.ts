@@ -53,6 +53,14 @@ export const MARKDOWN_ITEM_TYPE_NAMES: ReadonlySet<string> = new Set(["note", "p
 export const isMarkdownItemType = (name: string): boolean => MARKDOWN_ITEM_TYPE_NAMES.has(name);
 
 /**
+ * Types whose content is a prompt for an AI: the drawer offers Optimize.
+ * Keyed by name, like the maps above.
+ */
+export const PROMPT_ITEM_TYPE_NAMES: ReadonlySet<string> = new Set(["prompt"]);
+
+export const isPromptItemType = (name: string): boolean => PROMPT_ITEM_TYPE_NAMES.has(name);
+
+/**
  * Types whose list page is a thumbnail gallery rather than item cards. Keyed
  * by name, like the maps above.
  */

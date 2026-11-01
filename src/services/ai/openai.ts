@@ -14,7 +14,7 @@ import {
   AI_SAFETY_ID_SALT,
   AI_TIMEOUT_MS,
 } from "@/lib/constants/ai";
-import type { AiCall } from "@/types/ai";
+import type { AiCall, AiTextReply } from "@/types/ai";
 
 // Built on first use, so a missing key fails the call, not the import. Holds
 // no per-user state, so one process can share it.
@@ -96,12 +96,8 @@ export const hasAiCredits = (): Promise<boolean> => {
   return creditCheck.hasCredits;
 };
 
-/**
- * One call answering in JSON; returns the raw text for the caller to parse.
- * `json_object`, not a schema: the reply is checked by hand by the caller.
- * Throws `AiError` when no usable answer came back.
- */
-export const generateJsonText = async (call: AiCall, userId: string): Promise<string> => {
+/** One call to the model, with the settings every feature shares. */
+const respond = async (call: AiCall, userId: string, json: boolean) => {
   const openai = getClient();
   try {
     const response = await openai.responses.create({
@@ -113,11 +109,30 @@ export const generateJsonText = async (call: AiCall, userId: string): Promise<st
       // Nothing kept on OpenAI's side for later retrieval.
       store: false,
       safety_identifier: safetyIdentifier(userId),
-      text: { format: { type: "json_object" } },
+      ...(json && { text: { format: { type: "json_object" } } }),
     });
     if (!response.output_text) throw new AiError("no-answer", `Empty reply (${response.status})`);
-    return response.output_text;
+    return response;
   } catch (error) {
     throw toAiError(error);
   }
+};
+
+/**
+ * One call answering in JSON; returns the raw text for the caller to parse.
+ * `json_object`, not a schema: the reply is checked by hand by the caller.
+ * Throws `AiError` when no usable answer came back.
+ */
+export const generateJsonText = async (call: AiCall, userId: string): Promise<string> =>
+  (await respond(call, userId, true)).output_text;
+
+/**
+ * One call answering in plain text, such as markdown. JSON would only escape
+ * it to be unwrapped again. A token cap leaves readable text here, not a parse
+ * failure, so `complete` says whether it ran to the end. Throws `AiError` when
+ * no usable answer came back.
+ */
+export const generateText = async (call: AiCall, userId: string): Promise<AiTextReply> => {
+  const { output_text: text, status } = await respond(call, userId, false);
+  return { text, complete: status === "completed" };
 };

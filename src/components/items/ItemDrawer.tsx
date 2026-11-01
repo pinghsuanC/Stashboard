@@ -4,7 +4,7 @@ import { type CSSProperties, type ReactNode, useState } from "react";
 import { Calendar, Copy, Download, FileText, Folder, Pencil, Pin, Star, Tag } from "lucide-react";
 
 import { setItemFavorite, setItemPinned } from "@/actions/items";
-import { CodeEditor } from "@/components/items/CodeEditor";
+import { ExplainableCode } from "@/components/items/ExplainableCode";
 import { ItemDeleteDialog } from "@/components/items/ItemDeleteDialog";
 import { ItemEditForm } from "@/components/items/ItemEditForm";
 import { MarkdownEditor } from "@/components/items/MarkdownEditor";
@@ -274,7 +274,7 @@ export const ItemDrawer = ({
               {detail?.content && (
                 <Section title="Content">
                   {isCodeItemType(type.name) ? (
-                    <CodeEditor value={detail.content} language={detail.language} readOnly />
+                    <ExplainableCode key={item.id} value={detail.content} language={detail.language} />
                   ) : isMarkdownItemType(type.name) ? (
                     <MarkdownEditor value={detail.content} readOnly />
                   ) : (

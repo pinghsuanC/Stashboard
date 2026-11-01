@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { OnMount } from "@monaco-editor/react";
 import { Check, Copy } from "lucide-react";
@@ -46,6 +46,12 @@ interface CodeEditorProps {
   ariaLabel?: string;
   ariaDescribedBy?: string;
   ariaInvalid?: boolean;
+  /** Shown in the header after the window dots. */
+  headerTabs?: ReactNode;
+  /** Shown in the header before the copy button. */
+  headerActions?: ReactNode;
+  /** Shown in the code's place, in a box at least as tall. The code stays mounted. */
+  replacement?: ReactNode;
 }
 
 /**
@@ -53,6 +59,8 @@ interface CodeEditorProps {
  * button in the header. Grows with its content up to
  * `EDITOR_MAX_HEIGHT_PX`, then scrolls inside. For snippet and command
  * content (`isCodeItemType`); other types keep plain text.
+ *
+ * The forms use it as it is; the drawer adds to it through `ExplainableCode`.
  *
  * No `maxLength`: Monaco has none, and cutting off a paste silently would lose
  * text, so the content limit is left to the item schema's field error.
@@ -67,6 +75,9 @@ export const CodeEditor = ({
   ariaLabel = "Code",
   ariaDescribedBy,
   ariaInvalid,
+  headerTabs,
+  headerActions,
+  replacement,
 }: CodeEditorProps) => {
   const { preferences } = useEditorPreferences();
   // Derived from the font size, so a larger font never clips its lines.
@@ -133,9 +144,11 @@ export const CodeEditor = ({
           <span className="size-3 rounded-full bg-[#febc2e]" />
           <span className="size-3 rounded-full bg-[#28c840]" />
         </div>
+        {headerTabs}
         <span className="text-muted-foreground ml-auto truncate font-mono text-xs">
           {codeLanguageLabel(language)}
         </span>
+        {headerActions}
         <Button
           type="button"
           variant="ghost"
@@ -149,7 +162,13 @@ export const CodeEditor = ({
         </Button>
       </div>
 
-      <div style={{ height }}>
+      {replacement && (
+        <div style={{ minHeight: height, maxHeight: EDITOR_MAX_HEIGHT_PX }} className="overflow-auto px-4 py-3">
+          {replacement}
+        </div>
+      )}
+
+      <div style={{ height }} hidden={Boolean(replacement)}>
         <Editor
           height={height}
           value={value}

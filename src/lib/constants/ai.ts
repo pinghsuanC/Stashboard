@@ -1,13 +1,13 @@
 import { MINUTE_MS, SECOND_MS } from "@/lib/constants/time";
 
 /** Per feature, so moving one to another model is a one-line change. */
-export const AI_MODELS = { tags: "gpt-6-luna", summary: "gpt-6-luna" } as const;
+export const AI_MODELS = { tags: "gpt-6-luna", summary: "gpt-6-luna", explain: "gpt-6-luna" } as const;
 
 /** Reasoning effort per feature. Reasoning is billed as output, so kept low. */
-export const AI_EFFORTS = { tags: "low", summary: "low" } as const;
+export const AI_EFFORTS = { tags: "low", summary: "low", explain: "medium" } as const;
 
 /** Includes reasoning tokens, so it leaves room above the visible answer. */
-export const AI_MAX_OUTPUT_TOKENS = { tags: 400, summary: 400 } as const;
+export const AI_MAX_OUTPUT_TOKENS = { tags: 400, summary: 400, explain: 2000 } as const;
 
 /**
  * A user is waiting on a button: the SDK's defaults (10 minutes, 2 retries)
@@ -27,6 +27,9 @@ export const AI_CREDIT_CHECK_MAX_OUTPUT_TOKENS = 16;
 
 /** Characters of item content sent to the model; the rest is cut. */
 export const AI_CONTENT_MAX_CHARS = 2000;
+
+/** Characters of code sent for an explanation: unlike tags, it has to read all of it. */
+export const AI_CODE_MAX_CHARS = 12_000;
 
 /** Characters sent for a short field (language, URL, file name); the rest is cut. */
 export const AI_SHORT_FIELD_MAX_CHARS = 500;

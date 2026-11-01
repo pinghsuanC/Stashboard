@@ -11,7 +11,7 @@ import {
 } from "@/lib/constants/ai";
 import type { AiCall } from "@/types/ai";
 
-import { generateJsonText, hasAiCredits } from "./openai";
+import { generateJsonText, generateText, hasAiCredits } from "./openai";
 
 const { create, built } = vi.hoisted(() => ({ create: vi.fn(), built: vi.fn() }));
 
@@ -110,6 +110,50 @@ describe("generateJsonText: the request", () => {
     expect(first).toMatch(/^[0-9a-f]{64}$/);
     expect(first).toBe(again);
     expect(first).not.toBe(other);
+  });
+});
+
+describe("generateText", () => {
+  it("returns the text of a finished reply", async () => {
+    create.mockResolvedValue({ output_text: "## Overview", status: "completed" });
+
+    expect(await generateText(call, "ada")).toEqual({ text: "## Overview", complete: true });
+  });
+
+  it("flags a reply a token cap cut off, keeping its text", async () => {
+    create.mockResolvedValue({ output_text: "## Over", status: "incomplete" });
+
+    expect(await generateText(call, "ada")).toEqual({ text: "## Over", complete: false });
+  });
+
+  it("sends the same request as a JSON call, without JSON mode", async () => {
+    create.mockResolvedValue({ output_text: "text", status: "completed" });
+
+    await generateText(call, "ada");
+
+    const [request] = create.mock.calls[0];
+    expect(request).toMatchObject({
+      model: "gpt-6-luna",
+      reasoning: { effort: "low" },
+      instructions: "tag it",
+      input: "<item>",
+      max_output_tokens: 400,
+      store: false,
+      safety_identifier: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    expect(request).not.toHaveProperty("text");
+  });
+
+  it("an empty reply is no answer", async () => {
+    create.mockResolvedValue({ output_text: "", status: "completed" });
+
+    await expect(generateText(call, "ada")).rejects.toMatchObject({ name: "AiError", kind: "no-answer" });
+  });
+
+  it("maps SDK errors like a JSON call", async () => {
+    create.mockRejectedValue(new OpenAI.RateLimitError(429, {}, "slow down", headers));
+
+    await expect(generateText(call, "ada")).rejects.toMatchObject({ name: "AiError", kind: "busy" });
   });
 });
 

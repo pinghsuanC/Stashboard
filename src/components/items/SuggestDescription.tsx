@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useTransition } from "react";
+import { useTransition } from "react";
 import { LoaderCircle, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { generateDescription } from "@/actions/ai";
+import { useMountedRef } from "@/components/items/use-mounted-ref";
 import { useUserSession } from "@/components/session/UserSessionProvider";
 import { Button } from "@/components/ui/button";
 import { SOMETHING_WENT_WRONG } from "@/lib/constants/messages/common";
@@ -25,13 +26,7 @@ export const SuggestDescription = ({ onDescriptionChange, ...item }: SuggestDesc
   const [writing, startWriting] = useTransition();
   // The New Item dialog keeps its draft after closing, so a result landing
   // once the form is gone would fill in the next item's description.
-  const mounted = useRef(false);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
+  const mounted = useMountedRef();
 
   if (!aiAvailable) return null;
 

@@ -3,7 +3,17 @@ import { z } from "zod";
 import { ITEM_CONTENT_MAX_LENGTH, ITEM_TITLE_MAX_LENGTH } from "@/lib/constants/limits";
 import { AI_NOT_ENOUGH_CONTENT } from "@/lib/constants/messages/ai";
 import { ITEM_CONTENT_TOO_LONG, ITEM_TITLE_TOO_LONG } from "@/lib/constants/messages/items";
-import type { AutoTagInput, DescriptionInput } from "@/types/ai";
+import type { AutoTagInput, DescriptionInput, ExplainInput } from "@/types/ai";
+
+/** An explanation needs code to read; its language is optional, as on the item. */
+export const explainInputSchema: z.ZodType<ExplainInput> = z.object({
+  content: z
+    .string()
+    .trim()
+    .min(1, AI_NOT_ENOUGH_CONTENT)
+    .max(ITEM_CONTENT_MAX_LENGTH, ITEM_CONTENT_TOO_LONG),
+  language: z.string().trim().default(""),
+});
 
 /**
  * Tag suggestions read the form as it stands, so the New Item dialog works

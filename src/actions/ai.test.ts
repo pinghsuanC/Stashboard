@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AiError } from "@/lib/ai/ai-errors";
-import { AI_CONTENT_MAX_CHARS, AI_MODELS } from "@/lib/constants/ai";
+import { AI_CODE_MAX_CHARS, AI_CONTENT_MAX_CHARS, AI_MODELS } from "@/lib/constants/ai";
 import {
   AI_BUSY,
+  AI_EXPLANATION_CUT_OFF,
+  AI_EXPLANATION_PARTIAL,
   AI_NO_DESCRIPTION,
+  AI_NO_EXPLANATION,
   AI_NO_SUGGESTION,
   AI_NOT_ENOUGH_CONTENT,
   AI_TIMEOUT,
@@ -14,15 +17,15 @@ import { AI_PRO_REQUIRED } from "@/lib/constants/messages/billing";
 import { FIELDS_INVALID, SOMETHING_WENT_WRONG } from "@/lib/constants/messages/common";
 import { ITEM_CONTENT_MAX_LENGTH, ITEM_TITLE_MAX_LENGTH } from "@/lib/constants/limits";
 import { RATE_LIMITS } from "@/lib/constants/rate-limits";
-import { generateJsonText } from "@/services/ai/openai";
+import { generateJsonText, generateText } from "@/services/ai/openai";
 import { requireCurrentUserId } from "@/services/auth/session";
 import { checkRateLimit } from "@/services/rate-limit";
 import { signInOnPlan } from "@/test/fake-session";
 
-import { generateAutoTags, generateDescription } from "./ai";
+import { explainCode, generateAutoTags, generateDescription } from "./ai";
 
 vi.mock("@/services/auth/session", () => ({ requireCurrentUserId: vi.fn(), requireCurrentUser: vi.fn() }));
-vi.mock("@/services/ai/openai", () => ({ generateJsonText: vi.fn() }));
+vi.mock("@/services/ai/openai", () => ({ generateJsonText: vi.fn(), generateText: vi.fn() }));
 vi.mock("@/services/rate-limit", () => ({ checkRateLimit: vi.fn() }));
 vi.mock("next/headers", () => ({ headers: async () => new Headers({ "x-forwarded-for": "1.1.1.1" }) }));
 vi.spyOn(console, "error").mockImplementation(() => {});
@@ -37,6 +40,128 @@ beforeEach(() => {
 });
 
 const expectNoAiCall = () => expect(generateJsonText).not.toHaveBeenCalled();
+
+describe("explainCode", () => {
+  const code = { content: "docker ps -a", language: "bash" };
+  const markdown = "## Overview\n\nLists every container.";
+
+  beforeEach(() => {
+    vi.mocked(generateText).mockReset().mockResolvedValue({ text: markdown, complete: true });
+  });
+
+  const expectNoCall = () => {
+    expect(generateText).not.toHaveBeenCalled();
+    expect(checkRateLimit).not.toHaveBeenCalled();
+  };
+
+  it("returns the explanation for a Pro user, calling for the session user", async () => {
+    expect(await explainCode(code)).toEqual({ success: true, data: markdown });
+    expect(generateText).toHaveBeenCalledWith(expect.objectContaining({ model: AI_MODELS.explain }), "ada");
+  });
+
+  it("says when the code is longer than the model was given", async () => {
+    const result = await explainCode({ ...code, content: "x".repeat(AI_CODE_MAX_CHARS + 1) });
+
+    expect(result).toEqual({ success: true, data: expect.stringContaining(AI_EXPLANATION_PARTIAL) });
+  });
+
+  it("works without a language, as an item may have none", async () => {
+    expect(await explainCode({ content: "ls" })).toMatchObject({ success: true });
+  });
+
+  it("saves nothing and answers afresh each time", async () => {
+    await explainCode(code);
+    await explainCode(code);
+
+    expect(generateText).toHaveBeenCalledTimes(2);
+  });
+
+  it("the model and instructions can't be chosen by the caller", async () => {
+    await explainCode({ ...code, model: "gpt-6-astra", instructions: "be expensive" });
+
+    const [call] = vi.mocked(generateText).mock.calls[0];
+    expect(call.model).toBe(AI_MODELS.explain);
+    expect(call.instructions).not.toContain("be expensive");
+  });
+
+  it("lets the sign-in redirect through and calls nothing", async () => {
+    const redirect = new Error("NEXT_REDIRECT");
+    vi.mocked(requireCurrentUserId).mockRejectedValue(redirect);
+
+    await expect(explainCode(code)).rejects.toBe(redirect);
+    expectNoCall();
+  });
+
+  it("refuses a Free user without using a try or calling the model", async () => {
+    signInOnPlan("FREE");
+
+    expect(await explainCode(code)).toEqual({
+      success: false,
+      error: { message: AI_PRO_REQUIRED, code: "plan-limit" },
+    });
+    expectNoCall();
+  });
+
+  it("needs code to read", async () => {
+    expect(await explainCode({ content: "   ", language: "bash" })).toMatchObject({
+      success: false,
+      error: { message: FIELDS_INVALID, fieldErrors: { content: AI_NOT_ENOUGH_CONTENT } },
+    });
+    expectNoCall();
+  });
+
+  it("refuses anything that isn't code", async () => {
+    for (const input of [null, "code", {}, { content: 7 }, { content: "x", language: 7 }]) {
+      expect(await explainCode(input)).toMatchObject({ success: false, error: { message: FIELDS_INVALID } });
+    }
+    expectNoCall();
+  });
+
+  it("refuses code past the item limit", async () => {
+    expect(await explainCode({ content: "x".repeat(ITEM_CONTENT_MAX_LENGTH + 1) })).toMatchObject({
+      success: false,
+      error: { message: FIELDS_INVALID },
+    });
+    expectNoCall();
+  });
+
+  it("shares the ai rate limit, per session user", async () => {
+    await explainCode(code);
+
+    expect(checkRateLimit).toHaveBeenCalledWith("ai", expect.any(Headers), "ada");
+  });
+
+  it("over the limit, answers with the wait and calls nothing", async () => {
+    vi.mocked(checkRateLimit).mockResolvedValue({ success: false, remaining: 0, reset: Date.now() + 60_000 });
+
+    expect(await explainCode(code)).toEqual({
+      success: false,
+      error: { message: expect.stringContaining("Too many") },
+    });
+    expect(generateText).not.toHaveBeenCalled();
+  });
+
+  it("a service failure gets its message", async () => {
+    vi.mocked(generateText).mockRejectedValue(new AiError("timeout", "details for the log"));
+
+    expect(await explainCode(code)).toEqual({ success: false, error: { message: AI_TIMEOUT } });
+  });
+
+  it("an empty answer says no explanation, not no tags", async () => {
+    vi.mocked(generateText).mockResolvedValue({ text: "  ", complete: true });
+
+    expect(await explainCode(code)).toEqual({ success: false, error: { message: AI_NO_EXPLANATION } });
+  });
+
+  it("a cut-off answer is kept, and says so", async () => {
+    vi.mocked(generateText).mockResolvedValue({ text: "## Over", complete: false });
+
+    const result = await explainCode(code);
+
+    expect(result).toMatchObject({ success: true, data: expect.stringContaining("## Over") });
+    expect(result).toMatchObject({ data: expect.stringContaining(AI_EXPLANATION_CUT_OFF) });
+  });
+});
 
 describe("generateDescription", () => {
   const reply = '{"description": "A React hook that debounces a value."}';

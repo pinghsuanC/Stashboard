@@ -13,6 +13,18 @@ export interface AiCall {
  */
 export type AiFailureKind = "not-configured" | "busy" | "timeout" | "unavailable" | "no-answer";
 
+/** A model's plain text answer. `complete` is false when a token cap cut it off. */
+export interface AiTextReply {
+  text: string;
+  complete: boolean;
+}
+
+/** The saved code a drawer shows: what an explanation reads. */
+export interface ExplainInput {
+  content: string;
+  language: string;
+}
+
 /**
  * The item as it is in the form, unsaved: what a generated description reads.
  * Fields a type doesn't have are left blank.

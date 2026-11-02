@@ -2,6 +2,51 @@
 
 <!-- One `##` section per feature, in build order. Remove a section once it lands and is recorded in History. -->
 
+## Improvements
+
+**Status:** Not Started
+
+Work through the README's Important Improvements list from the 2026-11-01 code-cleaner audit and `src/actions/` scan, most severe first.
+
+### Goals
+
+- A slow or hung Stripe can't stall the app, and an account deletion leaves nothing behind.
+- Input sizes are bounded, and needless work on common paths is gone.
+- Every finding fixed is removed from the README's list in the same change, so the list stays true.
+
+### Requirements
+
+High:
+
+- **IM1** Session-path Stripe calls have a short timeout and no retries, falling back to stored rows. Webhooks keep a longer limit, and the client has a moderate `timeout`.
+- **IM2** Deleting an account deletes the user's R2 files after the rows commit. One failed object doesn't stop the others, and failures are logged. The matching Future Plans entry goes too.
+
+Medium:
+
+- **IM3** `language`, `url` and `tags` have limits in `constants/limits.ts`.
+- **IM4** The file route looks the user up once per request, and actions drop their extra lookup where the validation order allows it.
+- **IM5** The markdown stack leaves the `(app)` first load through `next/dynamic`.
+- **IM6** Allowed files aren't refused because of the browser's reported type.
+
+Low:
+
+- **IM7** Prompt optimizer image checks use a parsed tree, so nested definitions and URLs with parentheses can't re-point an image.
+- **IM8** GitHub tokens aren't stored, the password lookup is deterministic, and `openBillingPortal` is rate limited.
+- **IM9** A half-finished account deletion gets its own message.
+- **IM10** Stale comments fixed, one local host constant, and the language tables moved to `src/lib/constants/`.
+- **IM11** `Collection.icon` and `Collection.color` dropped through `npm run db:migrate`, if no planned feature needs them.
+- **IM12** Shared `EditorWindow` and `WindowTabs`, plus the remaining action helpers (flag toggle, failure constants, rate limit wording) where they still pay off.
+
+### Notes
+
+- The README's section lives on this feature's branch, so the list arrives with the work.
+- Not in this feature: the catch-all, session order and validation answer entries. They're staged on `refactor/action-failure-helpers` in their own session and still need their commit approved. Remove those three README entries once that lands, and build IM12's action helpers on top of it.
+- IM1 and IM2 also have proposed task cards. Use one route for each, so the work isn't done twice.
+- This is too much for one PR. Land the High items first, then split the rest into small PRs by area; each fix is tests first.
+- IM3: a value over a new limit only fails on its next save, so check what the dev branch holds before picking numbers.
+- IM11 removes columns, so ask before running that migration.
+- Findings marked as not reproduced in the README (IM6, and the case-only email row in IM8) need reproducing first, and can be dropped if they don't reproduce.
+
 ## History
 
 <!-- Keep this updated, earliest to latest. -->

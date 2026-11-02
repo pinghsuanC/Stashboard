@@ -7,14 +7,15 @@ import { CollectionNameTakenError } from "@/lib/collections/collection-errors";
 import { collectionCreateSchema } from "@/lib/collections/collection-schemas";
 import { COLLECTION_LIMIT_REACHED } from "@/lib/constants/messages/billing";
 import { COLLECTION_NAME_TAKEN, COLLECTION_NOT_FOUND } from "@/lib/constants/messages/collections";
-import { FIELDS_INVALID, SOMETHING_WENT_WRONG } from "@/lib/constants/messages/common";
+import { FIELDS_INVALID } from "@/lib/constants/messages/common";
 import {
   deleteCollection as removeCollection,
   createCollection as saveNewCollection,
   setCollectionFavorite as saveCollectionFavorite,
   updateCollection as saveCollection,
 } from "@/lib/db/collections";
-import { fieldErrorsOf } from "@/lib/helpers/form-errors";
+import { unexpectedFailure } from "@/lib/helpers/action-results";
+import { invalidFields } from "@/lib/helpers/form-errors";
 import { resetProfile } from "@/lib/session/user-session";
 import { requireCurrentUserId } from "@/services/auth/session";
 import type { CollectionHeader, SessionCollection } from "@/types/collections";
@@ -44,12 +45,7 @@ export const createCollection = async (input: unknown): Promise<ActionResult<Ses
   await requireCurrentUserId();
 
   const parsed = collectionCreateSchema.safeParse(input);
-  if (!parsed.success) {
-    return {
-      success: false,
-      error: { message: FIELDS_INVALID, fieldErrors: fieldErrorsOf(parsed.error) },
-    };
-  }
+  if (!parsed.success) return invalidFields(parsed.error);
 
   try {
     const collection = await saveNewCollection(parsed.data);
@@ -60,8 +56,7 @@ export const createCollection = async (input: unknown): Promise<ActionResult<Ses
     // The sign-in redirect for a signed-out user must propagate.
     unstable_rethrow(error);
     if (error instanceof PlanLimitError) return COLLECTION_LIMIT;
-    console.error("Collection create failed:", error);
-    return { success: false, error: { message: SOMETHING_WENT_WRONG } };
+    return unexpectedFailure(error, "Collection create");
   }
 };
 
@@ -83,12 +78,7 @@ export const updateCollection = async (
   if (typeof collectionId !== "string") return NOT_FOUND;
 
   const parsed = collectionCreateSchema.safeParse(input);
-  if (!parsed.success) {
-    return {
-      success: false,
-      error: { message: FIELDS_INVALID, fieldErrors: fieldErrorsOf(parsed.error) },
-    };
-  }
+  if (!parsed.success) return invalidFields(parsed.error);
 
   try {
     const collection = await saveCollection(collectionId, parsed.data);
@@ -98,8 +88,7 @@ export const updateCollection = async (
     // The sign-in redirect for a signed-out user must propagate.
     unstable_rethrow(error);
     if (error instanceof CollectionNameTakenError) return NAME_TAKEN;
-    console.error("Collection update failed:", error);
-    return { success: false, error: { message: SOMETHING_WENT_WRONG } };
+    return unexpectedFailure(error, "Collection update");
   }
 };
 
@@ -117,10 +106,7 @@ export const deleteCollection = async (collectionId: string): Promise<ActionResu
     resetProfile();
     return deleted ? { success: true, data: null } : NOT_FOUND;
   } catch (error) {
-    // The sign-in redirect for a signed-out user must propagate.
-    unstable_rethrow(error);
-    console.error("Collection delete failed:", error);
-    return { success: false, error: { message: SOMETHING_WENT_WRONG } };
+    return unexpectedFailure(error, "Collection delete");
   }
 };
 
@@ -142,9 +128,6 @@ export const setCollectionFavorite = async (
     resetProfile();
     return saved ? { success: true, data: null } : NOT_FOUND;
   } catch (error) {
-    // The sign-in redirect for a signed-out user must propagate.
-    unstable_rethrow(error);
-    console.error("Collection favorite failed:", error);
-    return { success: false, error: { message: SOMETHING_WENT_WRONG } };
+    return unexpectedFailure(error, "Collection favorite");
   }
 };

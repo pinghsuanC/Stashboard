@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { fieldErrorsOf } from "./form-errors";
+import { FIELDS_INVALID } from "@/lib/constants/messages/common";
+
+import { fieldErrorsOf, invalidFields } from "./form-errors";
 
 const schema = z.object({
   email: z.string().min(1, "Email is required").email("Enter a valid email"),
@@ -39,5 +41,19 @@ describe("form field errors from a Zod error", () => {
     const result = confirm.safeParse({ password: "a", confirmPassword: "b" });
 
     expect(fieldErrorsOf(result.error!)).toEqual({ confirmPassword: "Passwords don't match" });
+  });
+});
+
+describe("invalidFields", () => {
+  it("answers with the shared message and each failing field's first message", () => {
+    const result = schema.safeParse({ email: "", password: "short" });
+
+    expect(invalidFields(result.error!)).toEqual({
+      success: false,
+      error: {
+        message: FIELDS_INVALID,
+        fieldErrors: { email: "Email is required", password: "Too short" },
+      },
+    });
   });
 });

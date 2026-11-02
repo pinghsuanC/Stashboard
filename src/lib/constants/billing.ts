@@ -1,7 +1,17 @@
-import { DAY_MS } from "@/lib/constants/time";
+import { DAY_MS, SECOND_MS } from "@/lib/constants/time";
+import type { VendorCallLimits } from "@/types/billing";
 
 /** A period stays live this long past its end, so a renewal charged at the end has time to be recorded. */
 export const BILLING_GRACE_MS = 1 * DAY_MS;
+
+/** Every vendor call's limit unless the caller sets a shorter one: the webhook and checkout paths use this. */
+export const BILLING_CLIENT_TIMEOUT_MS = 20 * SECOND_MS;
+
+/**
+ * The session load's vendor calls. Every full page load waits on them outside
+ * any Suspense, so a hung vendor costs this long once, then the stored rows answer.
+ */
+export const SESSION_VENDOR_LIMITS: VendorCallLimits = { timeoutMs: 3 * SECOND_MS, maxRetries: 0 };
 
 /** Stripe subscription statuses that count as paid for: a renewal is recorded from one. */
 export const STRIPE_ACTIVE_STATUSES: ReadonlySet<string> = new Set(["active", "trialing"]);

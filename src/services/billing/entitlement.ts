@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 
 import { Prisma } from "@/generated/prisma/client";
 import { liveSince } from "@/lib/billing/plan-rules";
+import { SESSION_VENDOR_LIMITS } from "@/lib/constants/billing";
 import { adapterFor } from "@/services/billing/vendors";
 import { prisma } from "@/services/prisma";
 import { checkRateLimit } from "@/services/rate-limit";
@@ -70,8 +71,9 @@ const periodExists = async (where: { id: string; stripeCheckoutSessionId: string
  *    that isn't stored yet (a renewal) is recorded as a new `PAID` row.
  * 3. A user with neither (Free, or granted-only) costs no call.
  *
- * The check obeys the `billingCheck` rate limit, and a vendor error (or
- * missing settings) is logged and skipped: either way the stored rows answer.
+ * The check obeys the `billingCheck` rate limit and `SESSION_VENDOR_LIMITS`,
+ * and a vendor error, a timeout or missing settings is logged and skipped:
+ * either way the stored rows answer.
  * A live period keeps Pro; nothing is granted that the vendor didn't confirm.
  *
  * Known gap: `resetProfile()` after a server action also re-renders the
@@ -108,12 +110,12 @@ const checkWithVendor = async (userId: string) => {
   if (!limit.success) return;
 
   if (pending?.vendor && pending.stripeCheckoutSessionId) {
-    const checkout = await adapterFor(pending.vendor).fetchCheckout(pending.stripeCheckoutSessionId);
+    const checkout = await adapterFor(pending.vendor).fetchCheckout(pending.stripeCheckoutSessionId, SESSION_VENDOR_LIMITS);
     await settleCheckout(pending.id, pending.stripeCheckoutSessionId, checkout);
   }
   // Never looked up when a pending checkout was: one vendor call per load.
   if (customer?.vendor && customer.vendorCustomerId) {
-    const period = await adapterFor(customer.vendor).fetchActivePeriod(customer.vendorCustomerId);
+    const period = await adapterFor(customer.vendor).fetchActivePeriod(customer.vendorCustomerId, SESSION_VENDOR_LIMITS);
     if (period) await recordRenewal(userId, period);
   }
 };

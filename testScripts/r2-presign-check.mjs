@@ -2,12 +2,20 @@
 // client settings as src/services/storage.ts:
 //   1. a signed PUT with the signed type and size is accepted,
 //   2. a body of another size, or another Content-Type, is refused,
-//   3. the object reads back, then is deleted.
-// Writes one tiny object under users/__check__/ and always deletes it.
+//   3. the object reads back, then is deleted,
+//   4. a folder lists and batch deletes, as account deletion does.
+// Writes tiny objects under users/__check__/ and always deletes them.
 // Run: node testScripts/r2-presign-check.mjs   (reads .env)
 import "dotenv/config";
 
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  GetObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const { R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME } = process.env;
@@ -50,5 +58,27 @@ try {
 } finally {
   await s3.send(new DeleteObjectCommand({ Bucket: R2_BUCKET_NAME, Key }));
   console.log("deleted the check object");
+}
+
+const Prefix = `users/__check__/${crypto.randomUUID()}/`;
+const listed = async () =>
+  ((await s3.send(new ListObjectsV2Command({ Bucket: R2_BUCKET_NAME, Prefix }))).Contents ?? []).map((object) => object.Key);
+
+try {
+  for (const name of ["one.txt", "two.txt"]) {
+    await s3.send(new PutObjectCommand({ Bucket: R2_BUCKET_NAME, Key: `${Prefix}${name}`, Body: body, ContentType: TYPE }));
+  }
+  const keys = await listed();
+  expect("a folder lists its objects", keys.length === 2);
+  const { Errors } = await s3.send(
+    new DeleteObjectsCommand({
+      Bucket: R2_BUCKET_NAME,
+      Delete: { Objects: keys.map((key) => ({ Key: key })), Quiet: true },
+    }),
+  );
+  expect("a batch delete reports no errors", (Errors ?? []).length === 0);
+  expect("the folder is empty afterwards", (await listed()).length === 0);
+} finally {
+  for (const key of await listed()) await s3.send(new DeleteObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }));
 }
 process.exit(failed ? 1 : 0);

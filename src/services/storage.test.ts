@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { UPLOAD_URL_TTL_SECONDS } from "@/lib/constants/files";
 
-import { createUploadUrl, deleteFile, getFile, newFileKey } from "./storage";
+import { createUploadUrl, deleteFile, deleteUserFiles, getFile, newFileKey } from "./storage";
 
 // After vi.resetModules() the error class is a fresh copy, so match by name.
 const NOT_CONFIGURED = { name: "StorageNotConfiguredError" };
@@ -29,6 +29,8 @@ vi.mock("@aws-sdk/client-s3", () => {
     PutObjectCommand: class PutObjectCommand extends Command {},
     GetObjectCommand: class GetObjectCommand extends Command {},
     DeleteObjectCommand: class DeleteObjectCommand extends Command {},
+    DeleteObjectsCommand: class DeleteObjectsCommand extends Command {},
+    ListObjectsV2Command: class ListObjectsV2Command extends Command {},
     NoSuchKey: class NoSuchKey extends Error {
       name = "NoSuchKey";
     },
@@ -179,6 +181,80 @@ describe("deleting a file (S4)", () => {
 
   it("leaves another user's object alone, without asking R2", async () => {
     expect(await deleteFile("ada", "users/bob/x.png")).toBe(false);
+    expect(s3.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("deleting all of a user's files (CR2)", () => {
+  const sent = (name: string) =>
+    s3.send.mock.calls.map(([command]) => command).filter((command) => command.constructor.name === name);
+  const deletedKeys = () =>
+    sent("DeleteObjectsCommand").flatMap((command) => command.input.Delete.Objects.map(({ Key }: { Key: string }) => Key));
+
+  /** R2 with one listing per page; `onDelete` answers each batch delete. */
+  const bucketWith = (pages: string[][], onDelete: (keys: string[]) => object = () => ({})) => {
+    s3.send.mockImplementation(async (command) => {
+      if (command.constructor.name === "ListObjectsV2Command") {
+        const page = Number(command.input.ContinuationToken ?? 0);
+        const next = page + 1 < pages.length ? String(page + 1) : undefined;
+        return { Contents: pages[page].map((Key) => ({ Key })), NextContinuationToken: next };
+      }
+      return onDelete(command.input.Delete.Objects.map(({ Key }: { Key: string }) => Key));
+    });
+  };
+
+  it("lists exactly the user's folder, so a user whose id starts the same is safe", async () => {
+    bucketWith([[KEY]]);
+
+    await deleteUserFiles("ada");
+
+    expect(sent("ListObjectsV2Command")[0].input).toMatchObject({ Bucket: "bucket", Prefix: "users/ada/" });
+  });
+
+  it("deletes every object on every page and reports no failures", async () => {
+    bucketWith([["users/ada/1.png", "users/ada/2.png"], ["users/ada/3.png"]]);
+
+    expect(await deleteUserFiles("ada")).toEqual([]);
+    expect(deletedKeys()).toEqual(["users/ada/1.png", "users/ada/2.png", "users/ada/3.png"]);
+  });
+
+  it("an empty folder sends no delete", async () => {
+    bucketWith([[]]);
+
+    expect(await deleteUserFiles("ada")).toEqual([]);
+    expect(sent("DeleteObjectsCommand")).toEqual([]);
+  });
+
+  it("an object R2 refuses is reported, and the others still go", async () => {
+    bucketWith([["users/ada/1.png", "users/ada/2.png"]], () => ({ Errors: [{ Key: "users/ada/1.png", Code: "InternalError" }] }));
+
+    expect(await deleteUserFiles("ada")).toEqual(["users/ada/1.png"]);
+    expect(deletedKeys()).toEqual(["users/ada/1.png", "users/ada/2.png"]);
+  });
+
+  it("a failed batch reports its keys and doesn't stop the next page", async () => {
+    vi.spyOn(console, "error").mockImplementationOnce(() => {});
+    bucketWith([["users/ada/1.png"], ["users/ada/2.png"]], (keys) => {
+      if (keys.includes("users/ada/1.png")) throw new Error("connection reset");
+      return {};
+    });
+
+    expect(await deleteUserFiles("ada")).toEqual(["users/ada/1.png"]);
+    expect(deletedKeys()).toEqual(["users/ada/1.png", "users/ada/2.png"]);
+  });
+
+  it("a listing that fails is thrown: there is no telling what's left", async () => {
+    s3.send.mockRejectedValue(new Error("connection reset"));
+
+    await expect(deleteUserFiles("ada")).rejects.toThrow("connection reset");
+  });
+
+  it("with a setting missing, refuses before asking R2", async () => {
+    vi.resetModules();
+    vi.stubEnv("R2_BUCKET_NAME", "");
+    const fresh = await import("./storage");
+
+    await expect(fresh.deleteUserFiles("ada")).rejects.toMatchObject(NOT_CONFIGURED);
     expect(s3.send).not.toHaveBeenCalled();
   });
 });

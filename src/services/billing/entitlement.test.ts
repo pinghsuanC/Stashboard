@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BILLING_GRACE_MS } from "@/lib/constants/billing";
+import { BILLING_GRACE_MS, SESSION_VENDOR_LIMITS } from "@/lib/constants/billing";
 import { DAY_MS } from "@/lib/constants/time";
 import { checkRateLimit } from "@/services/rate-limit";
 import { fakeAdapter, paidPeriod, resetFakeBilling } from "@/test/fake-billing";
@@ -88,7 +88,7 @@ describe("a pending checkout is checked first (R18.1)", () => {
     fakeAdapter.fetchCheckout.mockResolvedValue({ state: "paid", period });
 
     expect(await resolveBilling("ada")).toEqual({ plan: "PRO", interval: "YEAR", periodEnd: period.periodEnd, isCustomer: true });
-    expect(fakeAdapter.fetchCheckout).toHaveBeenCalledWith("cs_p1");
+    expect(fakeAdapter.fetchCheckout).toHaveBeenCalledWith("cs_p1", SESSION_VENDOR_LIMITS);
     expect(adas()).toEqual([expect.objectContaining({ id: "p1", status: "PAID", vendorCustomerId: "cus_ada" })]);
   });
 
@@ -128,7 +128,7 @@ describe("a pending checkout is checked first (R18.1)", () => {
 
     await resolveBilling("ada");
 
-    expect(fakeAdapter.fetchCheckout).toHaveBeenCalledWith("cs_newer");
+    expect(fakeAdapter.fetchCheckout).toHaveBeenCalledWith("cs_newer", SESSION_VENDOR_LIMITS);
   });
 });
 
@@ -139,7 +139,7 @@ describe("a paying customer's subscription is checked (R18.2)", () => {
     fakeAdapter.fetchActivePeriod.mockResolvedValue(renewal);
 
     expect(await resolveBilling("ada")).toEqual({ plan: "PRO", interval: "MONTH", periodEnd: renewal.periodEnd, isCustomer: true });
-    expect(fakeAdapter.fetchActivePeriod).toHaveBeenCalledWith("cus_ada");
+    expect(fakeAdapter.fetchActivePeriod).toHaveBeenCalledWith("cus_ada", SESSION_VENDOR_LIMITS);
     expect(adas()).toEqual([
       expect.objectContaining({ id: "last" }),
       expect.objectContaining({
@@ -159,7 +159,7 @@ describe("a paying customer's subscription is checked (R18.2)", () => {
 
     await resolveBilling("ada");
 
-    expect(fakeAdapter.fetchActivePeriod).toHaveBeenCalledWith("cus_ada");
+    expect(fakeAdapter.fetchActivePeriod).toHaveBeenCalledWith("cus_ada", SESSION_VENDOR_LIMITS);
   });
 
   it("a renewal is recorded once, however many loads see it", async () => {

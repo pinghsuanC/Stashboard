@@ -9,6 +9,7 @@ import { BILLING_CANCEL_FAILED } from "@/lib/constants/messages/billing";
 import { checkRateLimit } from "@/services/rate-limit";
 import { fakeAdapter, resetFakeBilling } from "@/test/fake-billing";
 import { db, resetDb } from "@/test/fake-prisma";
+import { resetStorage, storage, upload } from "@/test/fake-storage";
 
 import { changePasswordAction, deleteAccountAction, updateEditorPreferences } from "./account";
 
@@ -43,13 +44,14 @@ vi.mock("@/services/auth/session", () => ({
 vi.mock("@/services/prisma", async () => ({ prisma: (await import("@/test/fake-prisma")).fakePrisma }));
 vi.mock("@/services/rate-limit", () => ({ checkRateLimit: vi.fn() }));
 vi.mock("@/services/billing/vendors", async () => (await import("@/test/fake-billing")).fakeVendors);
+vi.mock("@/services/storage", async () => (await import("@/test/fake-storage")).fakeStorage);
 vi.mock("next/headers", () => ({ headers: async () => new Headers({ "x-forwarded-for": "1.1.1.1" }) }));
 // Real bcrypt at the lowest cost.
 vi.mock("@/lib/constants/security", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/constants/security")>()),
   BCRYPT_ROUNDS: 4,
 }));
-vi.spyOn(console, "error").mockImplementation(() => {});
+const log = vi.spyOn(console, "error").mockImplementation(() => {});
 
 const OLD_PASSWORD = "old-password-1";
 const NEW_PASSWORD = "new-password-2";
@@ -116,6 +118,8 @@ const storedVersion = (id: string) => db.users.find((user) => user.id === id)?.s
 
 beforeEach(() => {
   resetDb();
+  resetStorage();
+  log.mockClear();
   vi.mocked(requireCurrentUserId).mockReset();
   vi.mocked(requireCurrentUser).mockReset();
   vi.mocked(signIn).mockClear();
@@ -349,6 +353,79 @@ describe("delete account", () => {
     expect(url).toBe("/sign-in");
     expect(db.users).toHaveLength(2);
     expect(signOut).not.toHaveBeenCalled();
+  });
+});
+
+describe("delete account: stored files go too (CR2)", () => {
+  const LEFT_THE_APP = { leaveTo: "/api/auth/signed-out?deleted=1" };
+  const stored = () => [...storage.objects.keys()].sort();
+
+  beforeEach(async () => {
+    resetFakeBilling();
+    await addUser("ada", OLD_PASSWORD);
+    await addUser("bob", OLD_PASSWORD);
+    upload("users/ada/one.png", "a");
+    // No row points at this one: the bucket is what's cleared, not the items.
+    upload("users/ada/orphan.pdf", "b");
+    upload("users/bob/keep.png", "c");
+    signedInAs("ada");
+  });
+
+  it("deletes everything in the user's folder and nobody else's", async () => {
+    expect(await deleteAccountAction()).toEqual(LEFT_THE_APP);
+
+    expect(stored()).toEqual(["users/bob/keep.png"]);
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  it("happens only after the rows commit: a failed delete keeps the files", async () => {
+    db.down = true;
+
+    await deleteAccountAction();
+
+    expect(stored()).toEqual(["users/ada/one.png", "users/ada/orphan.pdf", "users/bob/keep.png"]);
+  });
+
+  it("a kept account keeps its files when Stripe fails", async () => {
+    db.subscriptionPeriods.push({
+      id: "p",
+      userId: "ada",
+      vendor: "STRIPE",
+      vendorCustomerId: "cus_ada",
+      interval: "MONTH",
+      periodEnd: new Date(Date.UTC(2099, 0, 1)),
+    });
+    fakeAdapter.cancelAll.mockRejectedValueOnce(new Error("Stripe down"));
+
+    await deleteAccountAction();
+
+    expect(stored()).toHaveLength(3);
+  });
+
+  it("an object that won't delete is logged by key, the rest go, and the user still leaves", async () => {
+    storage.undeletable.add("users/ada/one.png");
+
+    expect(await deleteAccountAction()).toEqual(LEFT_THE_APP);
+
+    expect(stored()).toEqual(["users/ada/one.png", "users/bob/keep.png"]);
+    expect(log).toHaveBeenCalledWith(expect.any(String), ["users/ada/one.png"]);
+    expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("an unreachable bucket is logged, and the rows being gone still ends the session", async () => {
+    storage.down = true;
+
+    expect(await deleteAccountAction()).toEqual(LEFT_THE_APP);
+
+    expect(log).toHaveBeenCalledOnce();
+    expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("a bucket that isn't configured is the same", async () => {
+    storage.unconfigured = true;
+
+    expect(await deleteAccountAction()).toEqual(LEFT_THE_APP);
+    expect(log).toHaveBeenCalledOnce();
   });
 });
 

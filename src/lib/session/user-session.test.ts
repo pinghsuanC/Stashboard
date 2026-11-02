@@ -2,6 +2,7 @@ import { refresh } from "next/cache";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { auth } from "@/auth";
+import { SESSION_VENDOR_LIMITS } from "@/lib/constants/billing";
 import { DAY_MS } from "@/lib/constants/time";
 import { hasAiCredits } from "@/services/ai/openai";
 import { fakeAdapter, paidPeriod, resetFakeBilling } from "@/test/fake-billing";
@@ -394,7 +395,7 @@ describe("user session: billing (Billing 2: R19)", () => {
     await getUserSession();
 
     expect(fakeAdapter.fetchActivePeriod).toHaveBeenCalledOnce();
-    expect(fakeAdapter.fetchActivePeriod).toHaveBeenCalledWith("cus_secret");
+    expect(fakeAdapter.fetchActivePeriod).toHaveBeenCalledWith("cus_secret", SESSION_VENDOR_LIMITS);
   });
 
   it("a payment settled by this load makes the session's user Pro on this load", async () => {

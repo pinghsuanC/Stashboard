@@ -29,6 +29,41 @@ A developer knowledge hub for snippets, commands, prompts, notes, files, images,
 | Testing | Vitest |
 | Hosting and CI | Vercel, GitHub Actions |
 
+## Important Improvements
+
+Findings from the code-cleaner audit and the refactor-scanner run on `src/actions/` (2026-11-01), by impact.
+
+### High
+
+- **Add a short Stripe timeout on session load.** `getUserSession()` awaits `resolveBilling()` outside any Suspense, and the Stripe client (`services/billing/stripe.ts`) sets `maxNetworkRetries: 2` with no timeout, so it uses the SDK's 80 second default. If Stripe hangs rather than errors, the try/catch never fires and a paying customer's app waits with it. Pass `{ timeout, maxNetworkRetries: 0 }` on the session path's `fetchCheckout` and `fetchActivePeriod`, a few seconds at most, with the value in `constants/billing.ts`. Keep a longer limit for webhooks, and set a moderate client-wide `timeout`.
+- **Delete a user's R2 files with their account, or correct the message.** `deleteAccount()` removes the rows but leaves the uploads, while the toast says "Your account and everything in it are gone." Nothing holds the keys afterwards, and `storage.ts` has no list or prefix delete. See the matching entry under Future Plans.
+- **Share the actions' catch-all.** Nine catches in `collections.ts`, `items.ts` and `account.ts` repeat `unstable_rethrow`, a log and the generic failure, and a copy that loses the rethrow swallows the sign-in redirect. Add `unexpectedFailure(error, label)` in `lib/helpers/action-results.ts`, not in a `"use server"` file, where every export is a public endpoint. Each catch keeps its own `instanceof` lines. Leave out the file step catch, the AI catch, `failure()` in `billing.ts` and `cancelSubscriptions`.
+
+### Medium
+
+- **Cap `language`, `url` and `tags`.** `language` uses `optionalText()` with no maximum, `url` has none, and `tags` has no count or per-tag limit (`lib/items/item-schemas.ts`), so only the 1 MB action body limit bounds them. A large tag list runs one `connectOrCreate` per entry inside a single transaction. Add limits to `constants/limits.ts`.
+- **Check the session first in `updateItem` and `deleteItem`.** Both test the id before the session, and `updateItem` only reaches `requireCurrentUserId()` inside its `try`, so a signed-out caller sending a non-string id gets not found instead of the sign-in redirect. Add a test for this case, then move the session call first, outside the `try`.
+- **Share the validation failure answer.** Six actions write out the same `FIELDS_INVALID` result by hand. Add `invalidFields(error)` beside `fieldErrorsOf` in `lib/helpers/form-errors.ts`. The `FormState` copies stay, as they have a different shape.
+- **Drop the duplicate session lookups.** `React.cache` doesn't dedupe outside a render, so the file route pays for `requireCurrentUserId()` twice: two `auth()` decodes and two user queries per image, even on a 304. A 21-image gallery is at least 63 round trips a view. Have `getItemFile()` return the row's `userId` and drop the route's own call. Actions pay the same way, so remove their leading call only where the validation order allows it.
+- **Keep the markdown stack out of the first load.** `ItemDrawer` and `ItemCreateDialog` are static imports in the shell, which puts `react-markdown`, `remark-gfm` and `remark-breaks` (about 69 KB gzipped) on every `(app)` route. Load `MarkdownView` with `next/dynamic`, and `ItemDrawer` too, since it renders only once an item opens.
+- **Stop refusing valid uploads on the browser's reported type.** `lib/items/file-rules.ts` requires a non-blank reported MIME type to match a short list, but Windows with Excel commonly reports `.csv` as `application/vnd.ms-excel`, and Linux can report `.yaml` as `application/yaml` (from platform knowledge, not reproduced). The check adds no safety, as the client controls the value and the stored type comes from the extension. Remove it or widen the lists, updating the tests first.
+
+### Low
+
+- **Close the prompt optimizer's image gaps.** `MARKDOWN_IMAGE_PARTS` (`lib/ai/prompt-optimization.ts`) misses reference definitions nested in a blockquote or list, and URLs containing parentheses, so a reply can re-point an image. Compare URLs from a parsed tree (`mdast-util-from-markdown`) instead of a regex.
+- **Don't store GitHub tokens.** `PrismaAdapter` saves `access_token` and `refresh_token` in plain text, and no app code reads them. Wrap `linkAccount` in `services/auth/adapter.ts` to drop them.
+- **Make the password lookup deterministic.** `findCredentialUser` matches email case-insensitively with `findFirst` and no ordering, so a GitHub row differing only by case could be returned and the right password would fail (inferred, not reproduced). Filter on `passwordHash: { not: null }`, and make the adapter's `getUserByEmail` case-insensitive.
+- **Rate limit `openBillingPortal`.** Each call creates a Stripe portal session, and it's the one billing call without a limit. Add a policy keyed by user id.
+- **Word a half-finished account deletion.** Subscriptions are cancelled before the account is deleted, which is the right order, but if the delete then fails the user only sees "Something went wrong" with renewal already gone. Return a specific message.
+- **Fix four stale comments.** The `Known issue:` in `lib/auth/register-user.ts` (`registerEmail` now limits those notices), `constants/routes.ts:19`, and `constants/rate-limits.ts:4` and `:32`.
+- **Keep one local host constant.** `LOCAL_HOST` in `lib/billing/app-url.ts` duplicates `LOCAL_HOST_PATTERN` in `constants/security.ts`, and they disagree on `[::1]`.
+- **Move the language tables into constants.** `MONACO_LANGUAGES`, `LANGUAGE_ALIASES` and `PLAIN_TEXT` are data in `lib/items/code-language.ts`. Move them to `constants/editor.ts` or a new `constants/code-languages.ts`, and keep the functions there.
+- **Drop or use `Collection.icon` and `Collection.color`.** Nothing reads or writes them, and the sidebar's colour comes from item types.
+- **Share the editor window and tabs.** `CodeEditor`, `MarkdownEditor` and `ExplainableCode` repeat the window shell and a keyboard tablist, and `aria-controls` has already drifted. Extract `EditorWindow` and `WindowTabs` into `components/items/`, alongside `useCopyFeedback`.
+- **Share the flag toggle flow.** `saveItemFlag` and `setCollectionFavorite` differ only in the `NOT_FOUND` constant and log label. Add a server-side helper once the catch-all and validation helpers land, if it's still worth it.
+- **Build the failure constants one way.** `INVALID_VALUE` and the `plan-limit` and `not-found` results repeat across `items.ts`, `collections.ts` and `ai.ts`. Add `actionFailure(message, code?)` in `lib/helpers/action-results.ts`, with no field error options.
+- **Share the rate limit check and wording.** Five actions pair `checkRateLimit(policy, await headers(), key)` with `rateLimitMessage(limit.reset)`. Add `rateLimitWait(policy, key?)` in `lib/auth/rate-limit-wait.ts`, replacing the private `rateLimited` in `auth.ts`. The gain is modest, as each caller still wraps the message.
+
 ## Future Plans
 
 Deferred work, to pick up in the polishing phase.

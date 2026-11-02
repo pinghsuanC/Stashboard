@@ -21,11 +21,14 @@ export const storage = {
   down: false,
   /** When set, every call rejects as the service does with an `R2_*` setting missing. */
   unconfigured: false,
+  /** Keys R2 refuses to delete, one at a time, while the others go. */
+  undeletable: new Set<string>(),
 };
 
 export const resetStorage = () => {
   storage.objects = new Map();
   storage.signed = new Map();
+  storage.undeletable = new Set();
   storage.down = false;
   storage.unconfigured = false;
 };
@@ -67,6 +70,14 @@ export const fakeStorage = {
     if (!ownKey(userId, fileKey)) return false;
     storage.objects.delete(fileKey);
     return true;
+  },
+
+  deleteUserFiles: async (userId: string): Promise<string[]> => {
+    reachable();
+    const keys = [...storage.objects.keys()].filter((key) => ownKey(userId, key));
+    const failed = keys.filter((key) => storage.undeletable.has(key));
+    for (const key of keys) if (!storage.undeletable.has(key)) storage.objects.delete(key);
+    return failed;
   },
 };
 

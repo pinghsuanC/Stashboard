@@ -3,8 +3,13 @@ import "server-only";
 import Stripe from "stripe";
 
 import { BillingNotConfiguredError, WebhookSignatureError } from "@/lib/billing/billing-errors";
-import { STRIPE_ACTIVE_STATUSES, STRIPE_OPEN_STATUSES, STRIPE_WEBHOOK_EVENTS } from "@/lib/constants/billing";
-import type { BillingAdapter, BillingWebhookEvent, PaidPeriod } from "@/types/billing";
+import {
+  BILLING_CLIENT_TIMEOUT_MS,
+  STRIPE_ACTIVE_STATUSES,
+  STRIPE_OPEN_STATUSES,
+  STRIPE_WEBHOOK_EVENTS,
+} from "@/lib/constants/billing";
+import type { BillingAdapter, BillingWebhookEvent, PaidPeriod, VendorCallLimits } from "@/types/billing";
 
 // The Stripe billing adapter: the only module that imports `stripe`. It turns
 // Stripe's objects into vendor-neutral periods and events; what counts as Pro,
@@ -35,9 +40,17 @@ let client: Stripe | undefined;
 /** The client; throws `BillingNotConfiguredError` first if a setting is missing. */
 const stripe = (): Stripe => {
   const { STRIPE_SECRET_KEY } = config();
-  client ??= new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2026-09-30.endive", maxNetworkRetries: 2 });
+  client ??= new Stripe(STRIPE_SECRET_KEY, {
+    apiVersion: "2026-09-30.endive",
+    maxNetworkRetries: 2,
+    timeout: BILLING_CLIENT_TIMEOUT_MS,
+  });
   return client;
 };
+
+/** A caller's limits as one request's options; none keeps the client's own. */
+const requestOptions = (limits?: VendorCallLimits): Stripe.RequestOptions | undefined =>
+  limits && { timeout: limits.timeoutMs, maxNetworkRetries: limits.maxRetries };
 
 const idOf = (value: string | { id: string } | null): string | null =>
   value === null ? null : typeof value === "string" ? value : value.id;
@@ -61,8 +74,8 @@ const toPeriod = (subscription: Stripe.Subscription): PaidPeriod | null => {
 
 // One subscription per customer is the rule ("limit customers to one
 // subscription" in Checkout settings), so a short page covers every one.
-const listSubscriptions = async (customerId: string): Promise<Stripe.Subscription[]> =>
-  (await stripe().subscriptions.list({ customer: customerId, status: "all", limit: 20 })).data;
+const listSubscriptions = async (customerId: string, limits?: VendorCallLimits): Promise<Stripe.Subscription[]> =>
+  (await stripe().subscriptions.list({ customer: customerId, status: "all", limit: 20 }, requestOptions(limits))).data;
 
 export const stripeBilling: BillingAdapter = {
   vendor: "STRIPE",
@@ -95,8 +108,8 @@ export const stripeBilling: BillingAdapter = {
     return { url: session.url, checkoutId: session.id };
   },
 
-  async fetchCheckout(checkoutId) {
-    const session = await stripe().checkout.sessions.retrieve(checkoutId, { expand: ["subscription"] });
+  async fetchCheckout(checkoutId, limits) {
+    const session = await stripe().checkout.sessions.retrieve(checkoutId, { expand: ["subscription"] }, requestOptions(limits));
     if (session.status === "expired") return { state: "expired" };
     if (session.status === "complete" && session.payment_status === "paid" && session.subscription) {
       const period = typeof session.subscription === "string" ? null : toPeriod(session.subscription);
@@ -105,8 +118,8 @@ export const stripeBilling: BillingAdapter = {
     return { state: "open", url: session.url ?? null };
   },
 
-  async fetchActivePeriod(customerId) {
-    const active = (await listSubscriptions(customerId)).find((sub) => STRIPE_ACTIVE_STATUSES.has(sub.status));
+  async fetchActivePeriod(customerId, limits) {
+    const active = (await listSubscriptions(customerId, limits)).find((sub) => STRIPE_ACTIVE_STATUSES.has(sub.status));
     return active ? toPeriod(active) : null;
   },
 

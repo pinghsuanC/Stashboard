@@ -4,7 +4,9 @@ import { randomUUID } from "node:crypto";
 
 import {
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   NoSuchKey,
   PutObjectCommand,
   S3Client,
@@ -125,4 +127,37 @@ export const deleteFile = async (userId: string, fileKey: string): Promise<boole
   const { client: s3, bucket } = r2();
   await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: fileKey }));
   return true;
+};
+
+/**
+ * Deletes everything in the user's folder, whether or not a row still points
+ * at it, for account deletion. Returns the keys it couldn't delete: one bad
+ * object or batch doesn't stop the rest. A listing that fails is thrown, as
+ * there's no telling what is left.
+ */
+export const deleteUserFiles = async (userId: string): Promise<string[]> => {
+  const { client: s3, bucket } = r2();
+  const failed: string[] = [];
+  let page: string | undefined;
+  do {
+    const listing = await s3.send(
+      new ListObjectsV2Command({ Bucket: bucket, Prefix: folder(userId), ContinuationToken: page }),
+    );
+    page = listing.NextContinuationToken;
+    const keys = (listing.Contents ?? []).flatMap(({ Key }) => (Key ? [Key] : []));
+    if (keys.length === 0) continue;
+    try {
+      const { Errors } = await s3.send(
+        new DeleteObjectsCommand({
+          Bucket: bucket,
+          Delete: { Objects: keys.map((Key) => ({ Key })), Quiet: true },
+        }),
+      );
+      failed.push(...(Errors ?? []).flatMap(({ Key }) => (Key ? [Key] : [])));
+    } catch (error) {
+      console.error("Deleting a batch of stored files failed:", error);
+      failed.push(...keys);
+    }
+  } while (page);
+  return failed;
 };

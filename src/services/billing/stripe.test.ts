@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { BILLING_CLIENT_TIMEOUT_MS } from "@/lib/constants/billing";
+
 import { stripeBilling } from "./stripe";
 
 // After vi.resetModules() the error classes are fresh copies, so match by name.
@@ -85,6 +87,35 @@ beforeEach(() => {
   api.listSubscriptions.mockResolvedValue({ data: [] });
 });
 
+describe("a caller's limits reach Stripe (CR1)", () => {
+  const limits = { timeoutMs: 1234, maxRetries: 0 };
+  const stripeOptions = { timeout: 1234, maxNetworkRetries: 0 };
+
+  it("fetchCheckout passes them as that request's options", async () => {
+    api.retrieveSession.mockResolvedValue({ status: "open", url: null });
+
+    await stripeBilling.fetchCheckout("cs_1", limits);
+
+    expect(api.retrieveSession).toHaveBeenCalledWith("cs_1", { expand: ["subscription"] }, stripeOptions);
+  });
+
+  it("fetchActivePeriod passes them as that request's options", async () => {
+    await stripeBilling.fetchActivePeriod("cus_1", limits);
+
+    expect(api.listSubscriptions).toHaveBeenCalledWith({ customer: "cus_1", status: "all", limit: 20 }, stripeOptions);
+  });
+
+  it("with no limits, the call keeps the client's own timeout and retries", async () => {
+    api.retrieveSession.mockResolvedValue({ status: "open", url: null });
+
+    await stripeBilling.fetchCheckout("cs_1");
+    await stripeBilling.fetchActivePeriod("cus_1");
+
+    expect(api.retrieveSession).toHaveBeenCalledWith("cs_1", { expand: ["subscription"] }, undefined);
+    expect(api.listSubscriptions).toHaveBeenCalledWith({ customer: "cus_1", status: "all", limit: 20 }, undefined);
+  });
+});
+
 describe("the client (R5)", () => {
   it("is built on first use with the pinned API version and the secret key", async () => {
     vi.resetModules();
@@ -97,6 +128,16 @@ describe("the client (R5)", () => {
     expect(api.configs.slice(before)).toEqual([
       expect.objectContaining({ key: "sk_test_123", apiVersion: "2026-09-30.endive" }),
     ]);
+  });
+
+  it("CR1: replaces the SDK's 80 second default with a moderate timeout for every call", async () => {
+    vi.resetModules();
+    const fresh = await import("./stripe");
+    const before = api.configs.length;
+
+    await fresh.stripeBilling.fetchActivePeriod("cus_1");
+
+    expect(api.configs.slice(before)).toEqual([expect.objectContaining({ timeout: BILLING_CLIENT_TIMEOUT_MS })]);
   });
 
   it.each(["STRIPE_SECRET_KEY", "STRIPE_PRICE_ID_MONTHLY", "STRIPE_PRICE_ID_YEARLY"])(
@@ -187,7 +228,7 @@ describe("fetching a checkout (R6)", () => {
         periodEnd: new Date(PERIOD_END * 1000),
       },
     });
-    expect(api.retrieveSession).toHaveBeenCalledWith("cs_1", { expand: ["subscription"] });
+    expect(api.retrieveSession).toHaveBeenCalledWith("cs_1", { expand: ["subscription"] }, undefined);
   });
 
   it("an expired session is expired", async () => {
@@ -214,7 +255,7 @@ describe("subscriptions (R6)", () => {
     api.listSubscriptions.mockResolvedValue({ data: [subscription("canceled"), subscription("trialing")] });
 
     expect(await stripeBilling.fetchActivePeriod("cus_1")).toMatchObject({ subscriptionId: "sub_trialing", interval: "MONTH" });
-    expect(api.listSubscriptions).toHaveBeenCalledWith(expect.objectContaining({ customer: "cus_1", status: "all" }));
+    expect(api.listSubscriptions).toHaveBeenCalledWith(expect.objectContaining({ customer: "cus_1", status: "all" }), undefined);
   });
 
   it("no active subscription is no period; past due doesn't count", async () => {

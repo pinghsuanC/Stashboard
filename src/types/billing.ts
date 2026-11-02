@@ -90,6 +90,12 @@ export interface BillingCustomer {
   customerId: string;
 }
 
+/** How long one vendor call may take, for a caller that can't wait the client's default. */
+export interface VendorCallLimits {
+  timeoutMs: number;
+  maxRetries: number;
+}
+
 /**
  * One payment vendor. Every method talks to the vendor with the server's
  * secret; nothing the browser sends reaches it except through our own rows.
@@ -104,9 +110,9 @@ export interface BillingAdapter {
   /** Starts a checkout tied to a pending period; returns where to send the browser and the vendor's checkout id. */
   createCheckout(request: CheckoutRequest): Promise<{ url: string; checkoutId: string }>;
   /** Fetches a checkout by the id `createCheckout` returned. */
-  fetchCheckout(checkoutId: string): Promise<CheckoutState>;
+  fetchCheckout(checkoutId: string, limits?: VendorCallLimits): Promise<CheckoutState>;
   /** The customer's current paid period, or null when nothing is active (renewals). */
-  fetchActivePeriod(customerId: string): Promise<PaidPeriod | null>;
+  fetchActivePeriod(customerId: string, limits?: VendorCallLimits): Promise<PaidPeriod | null>;
   /** Whether the customer already has a live or pending subscription (no second checkout). */
   hasOpenSubscription(customerId: string): Promise<boolean>;
   /** Verifies a webhook's signature on the raw body; throws `WebhookSignatureError` if it doesn't. */

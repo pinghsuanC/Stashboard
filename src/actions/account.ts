@@ -21,6 +21,7 @@ import { fieldErrorsOf, invalidFields } from "@/lib/helpers/form-errors";
 import { requireCurrentUser, requireCurrentUserId } from "@/services/auth/session";
 import { adapterFor } from "@/services/billing/vendors";
 import { checkRateLimit } from "@/services/rate-limit";
+import { deleteUserFiles } from "@/services/storage";
 import type { EditorPreferences } from "@/types/editor";
 import type { ActionResult, DeleteAccountState, FormState } from "@/types/forms";
 
@@ -87,17 +88,39 @@ export const changePasswordAction = async (
  * anyway would leave a subscription billing nobody's account. A checkout
  * still open in another tab and paid after this is cancelled by the webhook
  * (its period is gone with the user).
+ *
+ * Stored files go last, only once the rows are gone: the reverse could leave
+ * a live account with its files missing.
  */
 export const deleteAccountAction = async (): Promise<DeleteAccountState> => {
   // Outside the try: its sign-in redirect must propagate.
-  await requireCurrentUserId();
+  const userId = await requireCurrentUserId();
   const cancelled = await cancelSubscriptions();
   if (cancelled !== "ok") return { error: cancelled };
 
   if (!(await deleteAccount())) return { error: SOMETHING_WENT_WRONG };
 
+  await removeStoredFiles(userId);
   await signOut({ redirect: false });
   return { leaveTo: withFlag(API_ROUTES.signedOut, FLAGS.deleted) };
+};
+
+/**
+ * Empties the deleted user's folder. Nothing it hits can change the answer,
+ * as the account is already gone, so failures are logged with the keys for a
+ * manual clean-up.
+ *
+ * Known issue: an upload link signed just before the delete stays valid for
+ * `UPLOAD_URL_TTL_SECONDS`, so a file landing in that window is left behind.
+ */
+const removeStoredFiles = async (userId: string) => {
+  try {
+    const failedKeys = await deleteUserFiles(userId);
+    if (failedKeys.length > 0) console.error("Deleted account's files left in the bucket:", failedKeys);
+  } catch (error) {
+    unstable_rethrow(error);
+    console.error(`Deleting the files of deleted user ${userId} failed:`, error);
+  }
 };
 
 /** Cancels each of the user's vendor customers' subscriptions: "ok", or the message to answer with. */

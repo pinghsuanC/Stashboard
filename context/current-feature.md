@@ -40,7 +40,7 @@ Low:
 ### Notes
 
 - The README's section lives on this feature's branch, so the list arrives with the work.
-- Not in this feature: the catch-all, session order and validation answer entries. They're staged on `refactor/action-failure-helpers` in their own session and still need their commit approved. Remove those three README entries once that lands, and build IM12's action helpers on top of it.
+- Not in this feature: the catch-all, session order and validation answer entries, already landed in PR 83. Build IM12's action helpers on top of that work.
 - IM1 and IM2 also have proposed task cards. Use one route for each, so the work isn't done twice.
 - This is too much for one PR. Land the High items first, then split the rest into small PRs by area; each fix is tests first.
 - IM3: a value over a new limit only fails on its next save, so check what the dev branch holds before picking numbers.

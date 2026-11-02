@@ -23,8 +23,7 @@ import {
   AI_NO_SUGGESTION,
 } from "@/lib/constants/messages/ai";
 import { AI_PRO_REQUIRED } from "@/lib/constants/messages/billing";
-import { FIELDS_INVALID } from "@/lib/constants/messages/common";
-import { fieldErrorsOf } from "@/lib/helpers/form-errors";
+import { invalidFields } from "@/lib/helpers/form-errors";
 import { generateJsonText, generateText } from "@/services/ai/openai";
 import { requireCurrentUser } from "@/services/auth/session";
 import { checkRateLimit } from "@/services/rate-limit";
@@ -50,12 +49,7 @@ const withAiChecks = async <Input, Result>(
   if (!canUseAi(plan)) return PRO_REQUIRED;
 
   const parsed = schema.safeParse(input);
-  if (!parsed.success) {
-    return {
-      success: false,
-      error: { message: FIELDS_INVALID, fieldErrors: fieldErrorsOf(parsed.error) },
-    };
-  }
+  if (!parsed.success) return invalidFields(parsed.error);
 
   const limit = await checkRateLimit("ai", await headers(), userId);
   if (!limit.success) return { success: false, error: { message: rateLimitMessage(limit.reset) } };

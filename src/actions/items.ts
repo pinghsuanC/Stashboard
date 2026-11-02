@@ -28,7 +28,8 @@ import {
 } from "@/lib/db/items";
 import { rateLimitMessage } from "@/lib/auth/rate-limit-messages";
 import { CollectionNotFoundError } from "@/lib/collections/collection-errors";
-import { fieldErrorsOf } from "@/lib/helpers/form-errors";
+import { unexpectedFailure } from "@/lib/helpers/action-results";
+import { invalidFields } from "@/lib/helpers/form-errors";
 import { itemCreateSchemaFor, itemUpdateSchemaFor } from "@/lib/items/item-schemas";
 import { FileMissingError, StorageNotConfiguredError } from "@/lib/items/upload-errors";
 import { resetProfile } from "@/lib/session/user-session";
@@ -64,6 +65,9 @@ export const updateItem = async (
   itemId: string,
   input: unknown,
 ): Promise<ActionResult<ItemDetail>> => {
+  // First and outside the try: a signed-out caller is redirected to sign in
+  // whatever they send.
+  await requireCurrentUserId();
   if (typeof itemId !== "string") return NOT_FOUND;
   try {
     const typeName = await getItemTypeName(itemId);
@@ -73,12 +77,7 @@ export const updateItem = async (
     }
 
     const parsed = itemUpdateSchemaFor(typeName).safeParse(input);
-    if (!parsed.success) {
-      return {
-        success: false,
-        error: { message: FIELDS_INVALID, fieldErrors: fieldErrorsOf(parsed.error) },
-      };
-    }
+    if (!parsed.success) return invalidFields(parsed.error);
 
     // Still null if the item was deleted since the type lookup.
     const item = await saveItem(itemId, parsed.data);
@@ -88,8 +87,7 @@ export const updateItem = async (
     // The sign-in redirect for a signed-out user must propagate.
     unstable_rethrow(error);
     if (error instanceof CollectionNotFoundError) return COLLECTION_GONE;
-    console.error("Item update failed:", error);
-    return { success: false, error: { message: SOMETHING_WENT_WRONG } };
+    return unexpectedFailure(error, "Item update");
   }
 };
 
@@ -101,9 +99,9 @@ export const updateItem = async (
  * deleted after the item.
  */
 export const deleteItem = async (itemId: string): Promise<ActionResult<null>> => {
-  if (typeof itemId !== "string") return NOT_FOUND;
-  // Outside the try, so the sign-in redirect propagates; storage needs the id.
+  // First and outside the try, as in `updateItem`; storage needs the id.
   const userId = await requireCurrentUserId();
+  if (typeof itemId !== "string") return NOT_FOUND;
   try {
     const deleted = await removeItem(itemId);
     resetProfile();
@@ -111,10 +109,7 @@ export const deleteItem = async (itemId: string): Promise<ActionResult<null>> =>
     if (deleted.fileKey) await deleteStoredFile(userId, deleted.fileKey);
     return { success: true, data: null };
   } catch (error) {
-    // The sign-in redirect for a signed-out user must propagate.
-    unstable_rethrow(error);
-    console.error("Item delete failed:", error);
-    return { success: false, error: { message: SOMETHING_WENT_WRONG } };
+    return unexpectedFailure(error, "Item delete");
   }
 };
 
@@ -167,12 +162,7 @@ export const createItem = async (
   if (!canUseType(plan, typeName)) return PRO_ONLY;
 
   const parsed = itemCreateSchemaFor(typeName).safeParse(input);
-  if (!parsed.success) {
-    return {
-      success: false,
-      error: { message: FIELDS_INVALID, fieldErrors: fieldErrorsOf(parsed.error) },
-    };
-  }
+  if (!parsed.success) return invalidFields(parsed.error);
   // The file is the file step's; the item is saved without it.
   const { file, ...fields } = parsed.data;
 
@@ -192,8 +182,7 @@ export const createItem = async (
     // Nothing was saved, so a file item's upload is never signed either.
     if (error instanceof CollectionNotFoundError) return COLLECTION_GONE;
     if (error instanceof PlanLimitError) return ITEM_LIMIT;
-    console.error("Item create failed:", error);
-    return { success: false, error: { message: SOMETHING_WENT_WRONG } };
+    return unexpectedFailure(error, "Item create");
   }
   if (!item) return INVALID_TYPE;
   resetProfile();
@@ -271,10 +260,7 @@ const saveItemFlag = async (
     resetProfile();
     return saved ? { success: true, data: null } : NOT_FOUND;
   } catch (error) {
-    // The sign-in redirect for a signed-out user must propagate.
-    unstable_rethrow(error);
-    console.error(`Item ${label} failed:`, error);
-    return { success: false, error: { message: SOMETHING_WENT_WRONG } };
+    return unexpectedFailure(error, `Item ${label}`);
   }
 };
 

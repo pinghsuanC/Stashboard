@@ -11,12 +11,13 @@ import { changePasswordSchema } from "@/lib/auth/auth-schemas";
 import { rateLimitMessage } from "@/lib/auth/rate-limit-messages";
 import { ACCOUNT_MESSAGES } from "@/lib/constants/messages/account";
 import { BILLING_CANCEL_FAILED } from "@/lib/constants/messages/billing";
-import { FIELDS_INVALID, SOMETHING_WENT_WRONG } from "@/lib/constants/messages/common";
+import { SOMETHING_WENT_WRONG } from "@/lib/constants/messages/common";
 import { API_ROUTES, FLAGS, ROUTES, withFlag } from "@/lib/constants/routes";
 import { getBillingCustomers } from "@/lib/db/billing";
 import { deleteAccount, saveEditorPreferences } from "@/lib/db/users";
 import { editorPreferencesSchema } from "@/lib/editor/editor-preferences";
-import { fieldErrorsOf } from "@/lib/helpers/form-errors";
+import { unexpectedFailure } from "@/lib/helpers/action-results";
+import { fieldErrorsOf, invalidFields } from "@/lib/helpers/form-errors";
 import { requireCurrentUser, requireCurrentUserId } from "@/services/auth/session";
 import { adapterFor } from "@/services/billing/vendors";
 import { checkRateLimit } from "@/services/rate-limit";
@@ -133,19 +134,11 @@ export const updateEditorPreferences = async (
   await requireCurrentUserId();
 
   const parsed = editorPreferencesSchema.safeParse(input);
-  if (!parsed.success) {
-    return {
-      success: false,
-      error: { message: FIELDS_INVALID, fieldErrors: fieldErrorsOf(parsed.error) },
-    };
-  }
+  if (!parsed.success) return invalidFields(parsed.error);
 
   try {
     return { success: true, data: await saveEditorPreferences(parsed.data) };
   } catch (error) {
-    // The sign-in redirect for a signed-out user must propagate.
-    unstable_rethrow(error);
-    console.error("Saving editor preferences failed:", error);
-    return { success: false, error: { message: SOMETHING_WENT_WRONG } };
+    return unexpectedFailure(error, "Saving editor preferences");
   }
 };

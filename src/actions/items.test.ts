@@ -156,6 +156,14 @@ describe("updateItem action: failures (A5)", () => {
       digest: expect.stringContaining("NEXT_REDIRECT"),
     });
   });
+
+  it("a signed-out caller sending a non-string id is redirected, not answered not-found", async () => {
+    vi.mocked(requireCurrentUserId).mockImplementation(() => redirect("/sign-in"));
+
+    await expect(updateItem(42 as unknown as string, { title: "Retro" })).rejects.toMatchObject({
+      digest: expect.stringContaining("NEXT_REDIRECT"),
+    });
+  });
 });
 
 describe("deleteItem action: success (R3)", () => {
@@ -216,6 +224,14 @@ describe("deleteItem action: failures (R3)", () => {
       digest: expect.stringContaining("NEXT_REDIRECT"),
     });
     expect(itemRow("note")).toBeDefined();
+  });
+
+  it("a signed-out caller sending a non-string id is redirected, not answered not-found", async () => {
+    vi.mocked(requireCurrentUserId).mockImplementation(() => redirect("/sign-in"));
+
+    await expect(deleteItem({ not: "an id" } as unknown as string)).rejects.toMatchObject({
+      digest: expect.stringContaining("NEXT_REDIRECT"),
+    });
   });
 });
 
